@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Secrets
+.env
+*.key
+credentials*
+
+# Model weights & checkpoints
+*.pt
+*.bin
+*.safetensors
+checkpoints/
+wandb/
+
+# Node (OpenClaw)
+node_modules/
+
+# Claude Code
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Jupyter
+.ipynb_checkpoints/
