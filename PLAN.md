@@ -220,7 +220,8 @@ Phase 3: Enterprise (Kubernetes)
 - **Phase 1** (DONE): Scaffolding, docs, git, GitHub
 - **Phase 2** (DONE): Event loop — manager publishes task, worker echoes, manager scores
 - **Phase 3** (DONE): LLM workers (Ollama), PRM scoring (LLM-as-judge), training bridge (rollout buffer + JSONL)
-- **Phase 4** (NEXT): Connect RL trainer (OpenRLHF GRPO), weight hot-swap, trained PRM model
+- **Phase 4** (DONE): Standalone GRPO trainer (torch + LoRA + distilgpt2), TrainingLoop orchestrator, MockTrainer fallback, ModelUpdateEvent publishing
+- **Phase 5** (NEXT): vLLM migration, weight hot-swap in workers, OpenRLHF integration (drop-in via Trainer protocol), Semantic Router as inference gateway
 
 ### Design Issue: ResultEvent Missing Prompt
 
@@ -461,3 +462,99 @@ model.updates topic (LoRA checkpoint path)
 - [OpenClaw Design Patterns](https://kenhuangus.substack.com/p/openclaw-design-patterns-part-1-of)
 - [OpenClaw Benchmarks](https://markaicode.com/benchmark-openclaw-performance-cpu-gpu-cloud/)
 - [OpenClaw $15 VPS Production Stack](https://medium.com/@rentierdigital/the-complete-openclaw-architecture-that-actually-scales-memory-cron-jobs-dashboard-and-the-c96e00ab3f35)
+
+---
+
+## Part 7: vLLM Semantic Router / ClawOS Research
+
+### What ClawOS Actually Is
+
+**ClawOS is NOT a standalone project.** It's a feature ("Claw Mode") within [vLLM Semantic Router](https://github.com/vllm-project/semantic-router) — a system-level intelligent router for Mixture-of-Models (MoM).
+
+#### vLLM Semantic Router (the infrastructure)
+
+- Sits between users and models as an [Envoy external processor](https://arxiv.org/abs/2603.04444)
+- **6 signal types** extracted from each request: Domain (MMLU LoRA classifiers), Keyword (regex), Embedding (neural similarity), Factual (hallucination), Feedback (user satisfaction), Preference (personalization)
+- **Decision engine**: configurable Boolean AND/OR rules → selects best model from pool
+- **Plugins**: semantic-cache, jailbreak detection, PII protection, hallucination detection (HaluGate 3-stage pipeline), system prompt injection
+- **MoM model family**: specialized routing models (mom-brain-flash/pro/max, mom-similarity-flash, mom-jailbreak-flash, mom-pii-flash)
+- **OpenAI API-compatible** — drop-in replacement for any OpenAI client
+- **Tech stack**: Go (42.6%), Python (16.4%), Rust (15.1%), TypeScript (13.5%)
+- **v0.1 Iris** (Jan 2026) released, **v0.2 Athena** in development (adds RADAR difficulty-aware routing)
+
+#### ClawOS / Claw Mode (the agent orchestration UI)
+
+- A specialized mode in the Semantic Router's Playground chat UI
+- **ClawOS** = "the orchestration/control mode in this chat"
+- **Claw Team** = organizational unit (exactly one leader required)
+- **Claw Worker** = individual anthropomorphic agent with domain, persona, speaking style, responsibilities
+- **Claw Manager** = LLM persona that builds teams and recruits workers
+- Provisioning via **MCP tool calls**: `claw_create_team`, `claw_create_worker`
+- Integrates with **OpenClaw** as backend agent platform
+- Confirmation-before-execution for all mutating actions
+
+### Mapping to Our Architecture
+
+| Semantic Router Concept | Our Equivalent | Our File |
+|---|---|---|
+| Model routing (6 signals) | Hardcoded single model in `LLMWorker` | `src/workers/llm_worker.py` |
+| OpenAI-compatible API | `ollama.AsyncClient` | `src/workers/llm_worker.py`, `src/rewards/scorer.py` |
+| Semantic cache | None — every prompt re-generated | — |
+| HaluGate (hallucination detection) | None | — |
+| Jailbreak / PII protection | None | — |
+| Claw Team | Workers sharing same `task_types` | `src/workers/base.py` |
+| Claw Worker | `BaseWorker` subclass instances | `src/workers/base.py` |
+| Claw Manager | `Manager` class | `src/manager/manager.py` |
+| MCP tool provisioning | Workers instantiated in code | `src/__main__.py` |
+| Difficulty-aware routing (RADAR) | No task difficulty concept | `src/events/types.py` TaskEvent |
+
+### What Helps Us
+
+#### 1. Semantic Router as Inference Gateway (HIGH VALUE)
+
+Our `LLMWorker.process()` and `LLMJudgeScorer._judge_single_step()` both call Ollama directly. Routing through the Semantic Router would give us:
+
+- **Multi-model routing** — route easy tasks to small models, hard tasks to large ones (directly relevant for GRPO where you generate `group_size` responses per prompt)
+- **Semantic caching** — avoid redundant generation for similar prompts during batch training
+- **Safety guardrails** — jailbreak detection, PII protection (needed once multi-tenant)
+- **Multi-provider fallback** — single API for vLLM, Ollama, cloud APIs
+- **HaluGate as complementary PRM signal** — a new `StepScorer` implementation using hallucination detection alongside LLM-as-judge
+
+#### 2. Difficulty-Aware Routing Concept (MEDIUM VALUE, borrowable now)
+
+The RADAR idea from v0.2 Athena: estimate query difficulty, route to appropriate model. We can implement a lightweight version by adding `difficulty: float` to `TaskEvent` and having the Manager estimate it heuristically.
+
+### What Does NOT Help Us
+
+- **ClawOS / Claw Mode UI** — we're a headless Python backend with RL training. A web playground for creating agent personas is irrelevant until we have a user-facing product. Our planned `config/openclaw/SOUL.md` templates are simpler and better fit.
+- **MoM specialized models** (mom-brain-flash, mom-pii-flash, etc.) — these are the router's internal signal-extraction models, not the models we're training via GRPO/DAPO.
+- **MCP-based provisioning** — our workers are instantiated in Python code. Adding MCP→NATS bridge for provisioning is massive over-engineering at this stage.
+- **Envoy deployment** — production K8s/service-mesh infrastructure, irrelevant for Phase 4.
+- **PII/Preference signals** — our prompts are synthetic training tasks, not user data.
+
+### Conflicts
+
+- **Worker orchestration ownership**: Our Manager coordinates via NATS pub/sub; ClawOS coordinates via MCP. These are different patterns — bridging them would require a translation layer.
+- **Language mismatch**: We're Python-only; Semantic Router is Go/Rust/TypeScript/Python. We'd consume it as an external service, never modify it.
+
+### Decision: Do NOT Integrate Now
+
+**Phase 4 (RL trainer) is the critical path. Plan Semantic Router integration for Phase 5.**
+
+Adding the Semantic Router now means: deploying a Go/Rust service alongside NATS and Ollama, new operational complexity, new debugging surface — all before we have a working training loop. Phase 4's bottleneck is `RolloutBuffer → OpenRLHF GRPO`, not inference routing.
+
+### Phase 5 Integration Plan (after RL trainer works)
+
+1. Deploy Semantic Router as standalone service
+2. Add `inference_url` to `Config` (default `http://localhost:8080/v1`)
+3. Create `OpenAICompatibleWorker` or modify `LLMWorker` to use `openai.AsyncOpenAI` instead of `ollama.AsyncClient`
+4. Route all inference (worker generation + PRM scoring) through the router
+5. Enable semantic caching for GRPO group generation
+6. Optionally add HaluGate as complementary `StepScorer` implementation
+
+### Sources
+
+- [DeepWiki: Claw Mode and System Prompt](https://deepwiki.com/vllm-project/semantic-router/7.4-claw-mode-and-system-prompt)
+- [GitHub: vllm-project/semantic-router](https://github.com/vllm-project/semantic-router)
+- [Paper: arxiv.org/abs/2603.04444](https://arxiv.org/abs/2603.04444)
+- [vLLM SR v0.1 Iris blog](https://blog.vllm.ai/2026/01/05/vllm-sr-iris.html)

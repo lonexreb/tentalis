@@ -1,3 +1,12 @@
 from src.training.bridge import NATSTrainingBridge, RolloutBuffer
+from src.training.loop import TrainingLoop
+from src.training.trainer import GRPOTrainer, MockTrainer, Trainer
 
-__all__ = ["NATSTrainingBridge", "RolloutBuffer"]
+__all__ = [
+    "GRPOTrainer",
+    "MockTrainer",
+    "NATSTrainingBridge",
+    "RolloutBuffer",
+    "Trainer",
+    "TrainingLoop",
+]

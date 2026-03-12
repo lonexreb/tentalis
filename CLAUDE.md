@@ -22,6 +22,8 @@ Event-Driven Architecture (EDA):
 
 Dev: pytest, pytest-asyncio, ruff
 
+Training (optional): `pip install -e ".[training]"` — torch, transformers, peft
+
 ## Planned Dependencies (future phases)
 
 - [OpenClaw](https://github.com/openclaw/openclaw) — control plane (identity, memory, channels)
@@ -52,7 +54,10 @@ src/
 │   ├── prompts.py       # STEP_JUDGE_PROMPT template for step-level evaluation
 │   └── prm_evaluator.py # PRMEvaluator — subscribes to results, scores steps, publishes rollouts
 ├── training/
-│   └── bridge.py        # RolloutBuffer + NATSTrainingBridge (batch rollouts for RL trainer)
+│   ├── bridge.py        # RolloutBuffer + NATSTrainingBridge (batch rollouts for RL trainer)
+│   ├── grpo.py          # GRPO math: compute_group_advantages, clipped_surrogate_loss, kl_penalty
+│   ├── trainer.py       # Trainer protocol, TrainStepResult, MockTrainer, GRPOTrainer (LoRA)
+│   └── loop.py          # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent)
 config/
 └── openclaw/      # SOUL.md, IDENTITY.md templates per agent (future)
 tests/
@@ -63,7 +68,9 @@ tests/
 │   ├── test_scorer.py        # LLMJudgeScorer tests (mocked Ollama)
 │   └── test_prm_evaluator.py # PRMEvaluator tests (mocked scorer)
 ├── training/
-│   └── test_bridge.py        # RolloutBuffer unit tests
+│   ├── test_bridge.py        # RolloutBuffer unit tests
+│   ├── test_grpo.py          # GRPO advantage math + torch loss/KL tests
+│   └── test_trainer.py       # MockTrainer + GRPOTrainer protocol/integration tests
 └── test_integration.py # Full manager→worker→PRM→rollout loop (requires NATS)
 docs/
 └── architecture/  # Diagrams and ADRs
@@ -84,6 +91,7 @@ docs/
 - Requires NATS: `tests/events/test_bus.py`, `tests/test_integration.py`
 - Mock strategy: scorer/evaluator tests mock Ollama client; integration tests use EchoWorker + mock scorer
 - Run standalone: `pytest tests/events/test_types.py tests/rewards/ tests/training/ -v`
+- Run standalone (skip slow torch tests): `pytest tests/training/ -v -k "not slow"`
 - Run all: `pytest tests/ -v` (with NATS running)
 
 ## Commit Format
@@ -96,7 +104,14 @@ Conventional commits:
 - `test:` adding/updating tests
 - `chore:` maintenance tasks
 
+## Current Phase
+
+**Phase 4 complete** — GRPO trainer integration. Standalone GRPO trainer (torch + transformers + peft) with LoRA fine-tuning, TrainingLoop orchestrator, MockTrainer fallback. Trains + saves LoRA checkpoints, publishes ModelUpdateEvent (workers ignore until Phase 5 vLLM migration).
+
+**Phase 5 (next):** vLLM migration, weight hot-swap in workers, OpenRLHF integration, Semantic Router as inference gateway.
+
 ## Key Documents
 
 - [PLAN.md](./PLAN.md) — Full technical research & architecture bible (papers, analysis, decisions)
 - [LEARNING.md](./LEARNING.md) — Mistake/lesson tracking for autonomous decisions
+- [RESEARCH-EXPERIMENT.md](./RESEARCH-EXPERIMENT.md) — Phase experiment records and findings

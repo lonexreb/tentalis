@@ -54,6 +54,38 @@ async def main() -> None:
         logger.info("Could not start PRMEvaluator: %s", exc)
         evaluator = None
 
+    # Set up training loop
+    try:
+        from src.training.trainer import GRPOTrainer
+
+        trainer = GRPOTrainer(
+            model_name=cfg.training_model,
+            lr=cfg.training_lr,
+            clip_epsilon=cfg.training_clip_epsilon,
+            kl_beta=cfg.training_kl_beta,
+            checkpoint_dir=cfg.training_checkpoint_dir,
+            lora_rank=cfg.training_lora_rank,
+            device=cfg.training_device,
+        )
+        print(f"Using GRPOTrainer with model={cfg.training_model}")
+    except (ImportError, Exception) as exc:
+        logger.info("torch/transformers/peft not available (%s), using MockTrainer", exc)
+        from src.training.trainer import MockTrainer
+
+        trainer = MockTrainer()
+        print("Using MockTrainer (fallback)")
+
+    from src.training.bridge import RolloutBuffer
+    from src.training.loop import TrainingLoop
+
+    buffer = RolloutBuffer(
+        batch_size=cfg.training_batch_size,
+        group_size=cfg.training_group_size,
+    )
+    training_loop = TrainingLoop(bus, trainer, buffer)
+    await training_loop.start()
+    print("TrainingLoop started")
+
     # Capture rollouts for display
     rollout_event = asyncio.Event()
     captured_rollout: list[TrainingRolloutEvent] = []
