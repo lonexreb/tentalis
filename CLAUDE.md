@@ -28,6 +28,7 @@ Optional extras:
 - `pip install -e ".[bridge]"` — aiohttp (Bridge HTTP API for OpenClaw integration)
 - `pip install -e ".[vllm]"` — vLLM (GPU inference server)
 - `pip install -e ".[openrlhf]"` — OpenRLHF (production GRPO training)
+- `pip install -e ".[intercept]"` — fastapi, uvicorn, httpx (Intercept Proxy)
 
 ## Directory Structure
 
@@ -38,26 +39,39 @@ src/
 ├── manager/
 │   └── manager.py # Manager agent (assign tasks, wait for results, publish feedback)
 ├── workers/
-│   ├── base.py         # BaseWorker ABC (subscribe, handle, process, model update hook)
-│   ├── echo_worker.py  # EchoWorker — echoes prompt back with PRM steps (testing)
-│   └── llm_worker.py   # LLMWorker — LLM inference via InferenceClient with step parsing
+│   ├── base.py              # BaseWorker ABC (subscribe, handle, process, model update hook, environment_type)
+│   ├── echo_worker.py       # EchoWorker — echoes prompt back with PRM steps (testing)
+│   ├── llm_worker.py        # LLMWorker — LLM inference via InferenceClient with step parsing
+│   ├── terminal_worker.py   # TerminalWorker — Docker-based bash execution
+│   ├── swe_worker.py        # SWEWorker — GitHub issue → plan/implement/test pipeline
+│   └── gui_worker.py        # GUIWorker — screenshot + action pairs for GUI automation
 ├── events/
 │   ├── types.py   # Pydantic v2 event models (TaskEvent, ResultEvent, FeedbackEvent, etc.)
 │   ├── topics.py  # Topic constants and helpers
 │   └── bus.py     # EventBus wrapping nats-py (connect, publish, subscribe, drain)
 ├── inference/
-│   ├── client.py       # InferenceClient protocol + OllamaInferenceClient + OpenAIInferenceClient
-│   └── vllm_lora.py    # VLLMLoRAManager — dynamic LoRA hot-swap via vLLM admin endpoints
+│   ├── client.py            # InferenceClient protocol + OllamaInferenceClient + OpenAIInferenceClient
+│   ├── vllm_lora.py         # VLLMLoRAManager — dynamic LoRA hot-swap via vLLM admin endpoints
+│   └── adapter_registry.py  # PerWorkerAdapterRegistry — per-worker LoRA adapter management
 ├── rewards/
-│   ├── scorer.py        # StepScorer protocol + LLMJudgeScorer (LLM-as-judge PRM)
-│   ├── prompts.py       # STEP_JUDGE_PROMPT template for step-level evaluation
-│   └── prm_evaluator.py # PRMEvaluator — subscribes to results, scores steps, publishes rollouts
+│   ├── scorer.py            # StepScorer protocol + LLMJudgeScorer (LLM-as-judge PRM)
+│   ├── prompts.py           # STEP_JUDGE_PROMPT template for step-level evaluation
+│   ├── prm_evaluator.py     # PRMEvaluator — subscribes to results, scores steps, publishes rollouts
+│   └── combined_scorer.py   # CombinedScorer — multi-scorer composition with per-environment weights
 ├── training/
 │   ├── bridge.py              # RolloutBuffer + NATSTrainingBridge (batch rollouts for RL trainer)
-│   ├── grpo.py                # GRPO math: compute_group_advantages, clipped_surrogate_loss, kl_penalty
+│   ├── grpo.py                # GRPO math: advantages, clipped_surrogate, asymmetric_clip, combined_loss, kl_penalty
 │   ├── trainer.py             # Trainer protocol, TrainStepResult, MockTrainer, GRPOTrainer (LoRA)
-│   ├── loop.py                # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent)
+│   ├── combined_trainer.py    # CombinedTrainer — merged RL + OPD distillation loss
+│   ├── meta_trainer.py        # ManagerMetaTrainer — outer-loop RL for manager feedback quality
+│   ├── loop.py                # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent, combined support)
 │   └── openrlhf_launcher.py   # OpenRLHFLauncher — subprocess launcher for production GRPO training
+├── intercept/
+│   ├── __main__.py    # Entrypoint: python -m src.intercept
+│   └── proxy.py       # InterceptProxy — FastAPI proxy logging SessionEvents to NATS
+├── opd/
+│   ├── hint_extractor.py    # HintExtractor — feedback → OPD hint + teacher logprobs
+│   └── rollout_builder.py   # CombinedRolloutBuilder — joins RL + OPD by task_id with timeout
 ├── bridge/
 │   ├── __main__.py    # Entrypoint: python -m src.bridge
 │   ├── service.py     # BridgeService — connects HTTP API to NATS event bus
@@ -118,12 +132,13 @@ docs/
 
 - Framework: pytest + pytest-asyncio (asyncio_mode = "auto")
 - `tests/` mirrors `src/` structure (e.g., `tests/events/` tests `src/events/`)
-- Standalone (no NATS/Ollama): `tests/events/test_types.py`, `tests/rewards/`, `tests/training/`, `tests/inference/`, `tests/workers/`, `tests/bridge/test_http_api.py`
+- Standalone (no NATS/Ollama): `tests/events/test_types.py`, `tests/rewards/`, `tests/training/`, `tests/inference/`, `tests/workers/`, `tests/bridge/test_http_api.py`, `tests/opd/`, `tests/intercept/`
 - Requires NATS: `tests/events/test_bus.py`, `tests/test_integration.py`, `tests/bridge/test_service.py`
-- Mock strategy: scorer/evaluator tests mock InferenceClient; bridge tests mock EventBus; integration tests use EchoWorker + mock scorer
-- Run standalone: `pytest tests/ -v` (72 pass, 5 skip without NATS)
+- Requires optional deps: `tests/intercept/` (fastapi), `tests/bridge/test_http_api.py` (aiohttp)
+- Mock strategy: scorer/evaluator tests mock InferenceClient; bridge tests mock EventBus; OPD tests mock bus+client; integration tests use EchoWorker + mock scorer
+- Run standalone: `pytest tests/ -v --ignore=tests/bridge --ignore=tests/intercept` (100 pass, 14 skip without torch/NATS)
 - Run standalone (skip slow torch tests): `pytest tests/training/ -v -k "not slow"`
-- Run all: `pytest tests/ -v` (with NATS running — 77 pass)
+- Run all: `pytest tests/ -v` (with NATS running + optional deps)
 
 ## Configuration (env vars)
 
@@ -136,6 +151,17 @@ docs/
 | TRAINER_BACKEND | standalone | `"standalone"` (GRPOTrainer) or `"openrlhf"` (OpenRLHFLauncher) |
 | BRIDGE_PORT | 8100 | Bridge HTTP API port |
 | OPENCLAW_GATEWAY_URL | ws://localhost:18789 | OpenClaw gateway WebSocket URL |
+| INTERCEPT_ENABLED | false | Enable intercept proxy |
+| INTERCEPT_PORT | 8200 | Intercept proxy port |
+| INTERCEPT_BACKEND_URL | http://localhost:11434 | Backend URL for intercept proxy |
+| OPD_TEACHER_MODEL | qwen2.5:1.5b | Teacher model for OPD hint extraction |
+| OPD_JOIN_TIMEOUT | 30.0 | Timeout (seconds) for joining RL + OPD rollouts |
+| OPD_WEIGHT | 0.3 | Weight for OPD loss in combined training |
+| RL_WEIGHT | 0.7 | Weight for RL loss in combined training |
+| TRAINING_CLIP_EPSILON_HIGH | 0.28 | Asymmetric high clip bound |
+| META_RL_ENABLED | false | Enable manager meta-RL training |
+| META_RL_WINDOW_SIZE | 200 | Sliding window for meta-RL score tracking |
+| META_RL_MIN_FEEDBACK | 200 | Min feedback events before meta-training |
 
 ## Commit Format
 
@@ -149,24 +175,31 @@ Conventional commits:
 
 ## Current Phase
 
-**Phase 6 complete** — OpenClaw full agent runtime integration with Docker Compose demo.
+**Phase 7 complete** — ADHR (Appraisal-Driven Hierarchical RL) with OpenClaw-RL integration.
 
-- Bridge Service (`src/bridge/`) — HTTP API ←→ NATS pub/sub translation for OpenClaw agents
-- OpenClaw agent configs (`config/openclaw/`) — SOUL.md, IDENTITY.md, SKILL.md for manager + worker
-- Standalone training service (`src/services/training.py`) — PRM Evaluator + Training Loop as Docker container
-- Docker Compose (`docker-compose.yml`) — 5 services: NATS, Ollama, OpenClaw, Bridge, Training
-- Demo script (`scripts/demo.sh`) — one-command startup with health checks
-- Bridge tests (`tests/bridge/`) — 10 unit tests + 1 integration test
-- Zero changes to existing `src/events/`, `src/rewards/`, `src/training/`, `src/workers/`, `src/manager/`
+- Intercept Proxy (`src/intercept/`) — FastAPI proxy logging SessionEvents to NATS
+- OPD Hint Extraction (`src/opd/hint_extractor.py`) — manager textual feedback → corrective hints + teacher logprobs
+- Combined Rollout Builder (`src/opd/rollout_builder.py`) — joins RL + OPD signals by task_id with timeout
+- Combined Trainer (`src/training/combined_trainer.py`) — merged RL + OPD loss with asymmetric clipping
+- Combined Scorer (`src/rewards/combined_scorer.py`) — multi-scorer composition with per-environment weight profiles
+- Manager Meta-RL (`src/training/meta_trainer.py`) — outer-loop RL training for manager feedback quality
+- Per-Worker Adapter Registry (`src/inference/adapter_registry.py`) — worker_id → LoRA adapter management
+- Multi-Environment Workers — TerminalWorker (Docker bash), SWEWorker (issue→patch), GUIWorker (screenshot+action)
+- `target_worker_id` on ModelUpdateEvent for per-worker model targeting
+- `environment_type` on BaseWorker for environment-specific scoring
+- Asymmetric clipped surrogate loss + combined loss in `grpo.py`
+- Docker Compose updated with intercept-proxy service (6 services total)
+- 106+ tests (100 pass standalone, 14 skip without torch)
 
 Previous phases:
+- Phase 6: OpenClaw integration, Bridge Service, Docker Compose demo
 - Phase 5: InferenceClient protocol, weight hot-swap, OpenRLHF, Semantic Router readiness
 - Phase 4: Standalone GRPO trainer, LoRA fine-tuning, TrainingLoop
 - Phase 3: LLM workers (Ollama), PRM scoring (LLM-as-judge), training bridge
 - Phase 2: Event loop, Manager/Worker agents, EchoWorker
 - Phase 1: Scaffolding, docs, git
 
-**Phase 7 (next):** Trained PRM model, DAPO graduation, multi-model routing in Semantic Router, HaluGate scorer.
+**Phase 8 (next):** Trained PRM model, DAPO graduation, multi-model routing in Semantic Router, HaluGate scorer.
 
 ## Key Documents
 

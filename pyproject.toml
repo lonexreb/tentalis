@@ -33,6 +33,11 @@ openrlhf = [
 bridge = [
     "aiohttp>=3.9",
 ]
+intercept = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "httpx>=0.27",
+]
 
 [build-system]
 requires = ["setuptools>=68.0"]

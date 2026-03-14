@@ -10,10 +10,11 @@ from aiohttp import web
 from pydantic import ValidationError
 
 from src.events.bus import EventBus
-from src.events.topics import FEEDBACK_SCORED, result_topic, task_topic
+from src.events.topics import FEEDBACK_SCORED, SESSIONS, result_topic, task_topic
 from src.events.types import (
     FeedbackEvent,
     ResultEvent,
+    SessionEvent,
     TaskEvent,
     TaskStatus,
 )
@@ -35,6 +36,8 @@ def create_app(
     app.router.add_post("/tasks/result", handle_submit_result)
     app.router.add_post("/feedback", handle_submit_feedback)
     app.router.add_get("/tasks/{task_id}/status", handle_task_status)
+    app.router.add_post("/sessions/log", handle_session_log)
+    app.router.add_get("/training/status", handle_training_status)
     app.router.add_get("/health", handle_health)
 
     return app
@@ -152,6 +155,41 @@ async def handle_task_status(request: web.Request) -> web.Response:
     return web.json_response(
         {"task_id": task_id, "status": "pending"},
     )
+
+
+async def handle_session_log(request: web.Request) -> web.Response:
+    """POST /sessions/log — Log a session event from the intercept proxy."""
+    bus: EventBus = request.app["bus"]
+
+    try:
+        body = await request.json()
+    except Exception:
+        return web.json_response({"error": "invalid JSON"}, status=400)
+
+    try:
+        event = SessionEvent(**body)
+    except (ValidationError, TypeError) as exc:
+        return web.json_response({"error": str(exc)}, status=422)
+
+    await bus.publish(SESSIONS, event)
+    logger.info("Bridge published SessionEvent %s", event.session_id)
+
+    return web.json_response(
+        {"session_id": event.session_id, "status": "published"},
+        status=201,
+    )
+
+
+async def handle_training_status(request: web.Request) -> web.Response:
+    """GET /training/status — Report training pipeline status."""
+    return web.json_response({
+        "status": "ok",
+        "components": {
+            "prm_evaluator": "active",
+            "training_loop": "active",
+            "combined_rollout_builder": "active",
+        },
+    })
 
 
 async def handle_health(request: web.Request) -> web.Response:

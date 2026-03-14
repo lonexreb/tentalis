@@ -31,7 +31,19 @@ class PRMEvaluator:
             logger.debug("No steps to score for %s", result.task_id)
             return
 
-        step_scores = await self.scorer.score_steps(result.prompt, result.steps)
+        # Support CombinedScorer's environment_type kwarg
+        from src.rewards.combined_scorer import CombinedScorer
+
+        if isinstance(self.scorer, CombinedScorer):
+            step_scores = await self.scorer.score_steps(
+                result.prompt, result.steps,
+                environment_type=result.model_dump().get("metadata", {}).get(
+                    "environment_type", "chat"
+                ),
+            )
+        else:
+            step_scores = await self.scorer.score_steps(result.prompt, result.steps)
+
         outcome_score = step_scores[-1] if step_scores else 0.0
 
         rollout = TrainingRolloutEvent(

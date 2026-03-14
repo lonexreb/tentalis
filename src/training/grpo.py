@@ -40,3 +40,34 @@ def kl_penalty(
 ) -> "torch.Tensor":
     """KL divergence penalty: beta * mean(log_pi - log_pi_ref)."""
     return beta * (log_probs - ref_log_probs).mean()
+
+
+def asymmetric_clipped_surrogate_loss(
+    ratios: "torch.Tensor",
+    advantages: "torch.Tensor",
+    clip_eps: float = 0.2,
+    clip_eps_high: float = 0.28,
+) -> "torch.Tensor":
+    """PPO/GRPO clipped surrogate with asymmetric clipping.
+
+    Uses a higher clip bound for positive advantages to encourage exploration
+    of improved responses (OpenClaw-RL style).
+    """
+    import torch
+
+    clip_low = 1.0 - clip_eps
+    clip_high = 1.0 + clip_eps_high
+    clipped = torch.clamp(ratios, clip_low, clip_high)
+    surr1 = ratios * advantages
+    surr2 = clipped * advantages
+    return -torch.min(surr1, surr2).mean()
+
+
+def combined_loss(
+    rl_loss: "torch.Tensor",
+    opd_loss: "torch.Tensor",
+    w_rl: float = 0.7,
+    w_opd: float = 0.3,
+) -> "torch.Tensor":
+    """Combine RL clipped surrogate loss with OPD distillation loss."""
+    return w_rl * rl_loss + w_opd * opd_loss

@@ -1,9 +1,13 @@
 """Tests for event type serialization — no NATS required."""
 
 from src.events.types import (
+    CombinedRolloutEvent,
     FeedbackEvent,
+    ManagerMetaRollout,
     ModelUpdateEvent,
+    OPDHintEvent,
     ResultEvent,
+    SessionEvent,
     TaskEvent,
     TaskStatus,
     TrainingRolloutEvent,
@@ -125,3 +129,70 @@ def test_feedback_score_bounds():
         FeedbackEvent(task_id="x", manager_id="m", worker_id="w", score=1.5)
     with pytest.raises(Exception):
         FeedbackEvent(task_id="x", manager_id="m", worker_id="w", score=-0.1)
+
+
+def test_model_update_target_worker_id():
+    event = ModelUpdateEvent(
+        model_version="v1",
+        checkpoint_path="/ckpt",
+        target_worker_id="w1",
+    )
+    data = event.model_dump_json()
+    restored = ModelUpdateEvent.model_validate_json(data)
+    assert restored.target_worker_id == "w1"
+
+
+def test_model_update_target_worker_id_defaults_none():
+    event = ModelUpdateEvent(model_version="v1", checkpoint_path="/ckpt")
+    assert event.target_worker_id is None
+
+
+def test_session_event_roundtrip():
+    event = SessionEvent(
+        worker_id="w1", model="qwen2.5:1.5b",
+        messages=[{"role": "user", "content": "hi"}],
+        response="hello", token_logprobs=[-0.5, -1.0],
+    )
+    data = event.model_dump_json()
+    restored = SessionEvent.model_validate_json(data)
+    assert restored.worker_id == "w1"
+    assert restored.response == "hello"
+    assert restored.token_logprobs == [-0.5, -1.0]
+
+
+def test_opd_hint_event_roundtrip():
+    event = OPDHintEvent(
+        task_id="t1", worker_id="w1",
+        hint_text="use DP", teacher_logprobs=[-0.3],
+        original_response="bad answer",
+    )
+    data = event.model_dump_json()
+    restored = OPDHintEvent.model_validate_json(data)
+    assert restored.hint_text == "use DP"
+    assert restored.teacher_logprobs == [-0.3]
+
+
+def test_combined_rollout_event_roundtrip():
+    event = CombinedRolloutEvent(
+        task_id="t1", worker_id="w1", prompt="p", response="r",
+        outcome_score=0.8, has_opd=True, hint_text="hint",
+    )
+    data = event.model_dump_json()
+    restored = CombinedRolloutEvent.model_validate_json(data)
+    assert restored.has_opd is True
+    assert restored.hint_text == "hint"
+
+
+def test_manager_meta_rollout_roundtrip():
+    event = ManagerMetaRollout(
+        manager_id="m1",
+        feedback_task_ids=["t1", "t2"],
+        improvement_delta=0.15,
+        feedback_texts=["do better", "nice"],
+        mean_score_before=0.4,
+        mean_score_after=0.55,
+    )
+    data = event.model_dump_json()
+    restored = ManagerMetaRollout.model_validate_json(data)
+    assert restored.improvement_delta == 0.15
+    assert len(restored.feedback_task_ids) == 2

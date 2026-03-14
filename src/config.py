@@ -31,3 +31,18 @@ class Config:
     # Bridge service (Phase 6 — OpenClaw integration)
     bridge_port: int = int(os.environ.get("BRIDGE_PORT", "8100"))
     openclaw_gateway_url: str = os.environ.get("OPENCLAW_GATEWAY_URL", "ws://localhost:18789")
+    # Intercept proxy (Phase 7)
+    intercept_enabled: bool = os.environ.get("INTERCEPT_ENABLED", "false").lower() == "true"
+    intercept_port: int = int(os.environ.get("INTERCEPT_PORT", "8200"))
+    intercept_backend_url: str = os.environ.get("INTERCEPT_BACKEND_URL", "http://localhost:11434")
+    # OPD (On-Policy Distillation)
+    opd_teacher_model: str = os.environ.get("OPD_TEACHER_MODEL", "qwen2.5:1.5b")
+    opd_join_timeout: float = float(os.environ.get("OPD_JOIN_TIMEOUT", "30.0"))
+    opd_weight: float = float(os.environ.get("OPD_WEIGHT", "0.3"))
+    rl_weight: float = float(os.environ.get("RL_WEIGHT", "0.7"))
+    # Asymmetric clipping
+    training_clip_epsilon_high: float = float(os.environ.get("TRAINING_CLIP_EPSILON_HIGH", "0.28"))
+    # Meta-RL
+    meta_rl_enabled: bool = os.environ.get("META_RL_ENABLED", "false").lower() == "true"
+    meta_rl_window_size: int = int(os.environ.get("META_RL_WINDOW_SIZE", "200"))
+    meta_rl_min_feedback: int = int(os.environ.get("META_RL_MIN_FEEDBACK", "200"))

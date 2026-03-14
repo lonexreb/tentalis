@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 
 class BaseWorker(ABC):
+    environment_type: str = "chat"
+
     def __init__(self, worker_id: str, bus: EventBus, task_types: list[str]) -> None:
         self.worker_id = worker_id
         self.bus = bus
@@ -44,6 +46,13 @@ class BaseWorker(ABC):
         await self.bus.publish(result_topic(task.task_type), result)
 
     async def _handle_model_update(self, event: ModelUpdateEvent) -> None:
+        # Filter by target_worker_id if set
+        if event.target_worker_id and event.target_worker_id != self.worker_id:
+            logger.debug(
+                "Worker %s ignoring model update targeted at %s",
+                self.worker_id, event.target_worker_id,
+            )
+            return
         logger.info("Worker %s received model update: %s", self.worker_id, event.model_version)
         await self.reload_model(event)
 

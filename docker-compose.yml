@@ -48,6 +48,23 @@ services:
       nats:
         condition: service_healthy
 
+  intercept-proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile.intercept
+    ports:
+      - "8200:8200"
+    environment:
+      NATS_URL: nats://nats:4222
+      INTERCEPT_PORT: "8200"
+      INTERCEPT_BACKEND_URL: http://ollama:11434
+      INTERCEPT_ENABLED: "true"
+    depends_on:
+      nats:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+
   training:
     build:
       context: .
@@ -55,13 +72,16 @@ services:
     environment:
       NATS_URL: nats://nats:4222
       INFERENCE_BACKEND: openai
-      INFERENCE_BASE_URL: http://ollama:11434/v1
+      INFERENCE_BASE_URL: http://intercept-proxy:8200/v1
       LLM_MODEL: qwen2.5:1.5b
+      META_RL_ENABLED: "true"
     depends_on:
       nats:
         condition: service_healthy
       ollama:
         condition: service_healthy
+      intercept-proxy:
+        condition: service_started
     command: python -m src.services.training
 
 volumes:
