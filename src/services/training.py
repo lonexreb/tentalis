@@ -15,6 +15,43 @@ from src.inference.client import create_client
 logger = logging.getLogger(__name__)
 
 
+def _create_trainer(cfg: Config) -> object:
+    """Select and instantiate the training backend based on config."""
+    if cfg.trainer_backend == "openrlhf":
+        from src.training.openrlhf_backend import OpenRLHFBackend
+
+        trainer = OpenRLHFBackend(
+            model_name=cfg.training_model,
+            output_dir=cfg.training_checkpoint_dir,
+            learning_rate=cfg.training_lr,
+            kl_coeff=cfg.training_kl_beta,
+            clip_range=cfg.training_clip_epsilon,
+        )
+        logger.info("Using OpenRLHF backend with model=%s", cfg.training_model)
+        return trainer
+
+    # Standalone backend: try GRPOTrainer, fall back to MockTrainer
+    try:
+        from src.training.trainer import GRPOTrainer
+
+        trainer = GRPOTrainer(
+            model_name=cfg.training_model,
+            lr=cfg.training_lr,
+            clip_epsilon=cfg.training_clip_epsilon,
+            kl_beta=cfg.training_kl_beta,
+            checkpoint_dir=cfg.training_checkpoint_dir,
+            lora_rank=cfg.training_lora_rank,
+            device=cfg.training_device,
+        )
+        logger.info("Using GRPOTrainer with model=%s", cfg.training_model)
+        return trainer
+    except (ImportError, Exception) as exc:
+        logger.info("GRPOTrainer not available (%s), using MockTrainer", exc)
+        from src.training.trainer import MockTrainer
+
+        return MockTrainer()
+
+
 async def main() -> None:
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s %(name)s %(message)s",
@@ -42,35 +79,8 @@ async def main() -> None:
     except (ImportError, Exception) as exc:
         logger.warning("Could not start PRMEvaluator: %s", exc)
 
-    # Training Loop
-    trainer = None
-    if cfg.trainer_backend == "openrlhf":
-        from src.training.openrlhf_launcher import OpenRLHFLauncher
-
-        OpenRLHFLauncher(
-            model_name=cfg.training_model,
-            output_dir=cfg.training_checkpoint_dir,
-        )
-        logger.info("OpenRLHFLauncher configured")
-    else:
-        try:
-            from src.training.trainer import GRPOTrainer
-
-            trainer = GRPOTrainer(
-                model_name=cfg.training_model,
-                lr=cfg.training_lr,
-                clip_epsilon=cfg.training_clip_epsilon,
-                kl_beta=cfg.training_kl_beta,
-                checkpoint_dir=cfg.training_checkpoint_dir,
-                lora_rank=cfg.training_lora_rank,
-                device=cfg.training_device,
-            )
-            logger.info("Using GRPOTrainer with model=%s", cfg.training_model)
-        except (ImportError, Exception) as exc:
-            logger.info("GRPOTrainer not available (%s), using MockTrainer", exc)
-            from src.training.trainer import MockTrainer
-
-            trainer = MockTrainer()
+    # Training Loop — select backend
+    trainer = _create_trainer(cfg)
 
     if trainer is not None:
         from src.training.bridge import RolloutBuffer
@@ -82,7 +92,7 @@ async def main() -> None:
         )
         training_loop = TrainingLoop(bus, trainer, buffer)
         await training_loop.start()
-        logger.info("TrainingLoop started")
+        logger.info("TrainingLoop started (backend=%s)", cfg.trainer_backend)
 
     logger.info("Training service running — waiting for events")
     await asyncio.Event().wait()

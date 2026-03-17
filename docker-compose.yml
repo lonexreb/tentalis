@@ -84,5 +84,33 @@ services:
         condition: service_started
     command: python -m src.services.training
 
+  # OpenRLHF training backend (GPU required, optional)
+  # Uncomment to use production Ray+vLLM+DeepSpeed GRPO training
+  # instead of the standalone CPU trainer.
+  #
+  # openrlhf-trainer:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   environment:
+  #     NATS_URL: nats://nats:4222
+  #     TRAINER_BACKEND: openrlhf
+  #     TRAINING_MODEL: Qwen/Qwen2.5-1.5B
+  #     INFERENCE_BACKEND: openai
+  #     INFERENCE_BASE_URL: http://intercept-proxy:8200/v1
+  #   depends_on:
+  #     nats:
+  #       condition: service_healthy
+  #     ollama:
+  #       condition: service_healthy
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: all
+  #             capabilities: [gpu]
+  #   command: python -m src.services.training
+
 volumes:
   ollama_data:

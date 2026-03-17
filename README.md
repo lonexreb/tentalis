@@ -3,16 +3,16 @@
 
 # agentic-employees
 
-**AI agents that learn from manager feedback — like performance appraisals that actually improve performance.**
+**ADHR meta-RL framework built on top of OpenRLHF/OpenClaw-RL — agents that learn from manager feedback.**
 
 [![Python](https://img.shields.io/badge/Python-%3E%3D3.10-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Tests](https://img.shields.io/badge/Tests-100%20passing-brightgreen?logo=pytest&logoColor=white)](tests/)
-[![Phase](https://img.shields.io/badge/Phase-7%20of%208-blueviolet)](RESEARCH-EXPERIMENT.md)
+[![Phase](https://img.shields.io/badge/Phase-8-blueviolet)](RESEARCH-EXPERIMENT.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
-[![NATS](https://img.shields.io/badge/Broker-NATS-27AAE1?logo=natsdotio&logoColor=white)](https://nats.io)
+[![NATS](https://img.shields.io/badge/Orchestration-NATS-27AAE1?logo=natsdotio&logoColor=white)](https://nats.io)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 
-[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Business Use Cases](#business-use-cases) | [Why agentic-employees?](#why-agentic-employees) | [Roadmap](#roadmap)
+[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Novel Contributions](#novel-contributions) | [Why agentic-employees?](#why-agentic-employees) | [Roadmap](#roadmap)
 
 </div>
 
@@ -20,14 +20,14 @@
 
 ## The Problem
 
-Most AI agent frameworks are **fire-and-forget** — agents complete tasks but never learn from their mistakes.
+Most AI agent frameworks are **fire-and-forget** — agents complete tasks but never learn from their mistakes. And most RL training frameworks are **training-only** — they produce better models but don't handle multi-agent orchestration, live scoring, or continuous deployment.
 
-- Agents repeat the same errors across conversations
-- No feedback loop between evaluation and model improvement
-- RL training pipelines are disconnected from agent runtimes
-- Scaling from 1 agent to N agents requires rearchitecting everything
+**agentic-employees** bridges both worlds:
+- **Orchestration layer** (NATS): Agent coordination, task routing, manager feedback loops
+- **Training layer** (OpenRLHF): Production-grade GRPO/DAPO training with Ray + vLLM + DeepSpeed
+- **Novel meta-RL layer** (ours): Manager trains too, environment-aware scoring, per-worker adaptation
 
-**agentic-employees** closes the loop: managers evaluate agent work step-by-step, scores feed into GRPO training, and improved weights hot-swap back into workers — continuously, without downtime.
+The result: managers evaluate agent work step-by-step, scores feed into OpenRLHF training, and improved weights hot-swap back into workers — continuously, without downtime.
 
 ---
 
@@ -67,17 +67,25 @@ User --> OpenClaw Web UI (:3000)
 
 ## Quick Start
 
+### Via CLI (recommended)
 ```bash
-# Clone and start everything (6 services)
+pip install -e "."
+agentic-employees init                          # Set up config, pull model
+agentic-employees serve --docker                # Start all services
+agentic-employees status                        # Check everything is running
+agentic-employees train --backend standalone    # CPU training (dev)
+agentic-employees train --backend openrlhf      # GPU training (production)
+```
+
+### Via Docker Compose
+```bash
 git clone https://github.com/lonexreb/agentic-employees.git
 cd agentic-employees
 ./scripts/demo.sh
-
 # Open http://localhost:3000 — message the Manager agent
 ```
 
-Or manually:
-
+### Manual
 ```bash
 docker compose up -d
 docker compose exec ollama ollama pull qwen2.5:1.5b
@@ -101,6 +109,29 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 | One-size-fits-all scoring | **CombinedScorer** — environment-aware weight profiles (chat/terminal/SWE/GUI) |
 | Manager never improves | **Meta-RL** outer loop trains the manager to give better feedback |
 | Per-worker model updates | **Adapter Registry** — per-worker LoRA adapters with targeted model updates |
+
+---
+
+## Novel Contributions
+
+These are the components that differentiate agentic-employees from existing frameworks. Everything else (GRPO math, OPD extraction, rollout collection) is better done by OpenRLHF/veRL — and we adopt them via the `OpenRLHFBackend`.
+
+| Contribution | What's Novel | Where |
+|---|---|---|
+| **Manager Meta-RL** | Outer-loop RL that trains the *evaluator*, not just the agent. No other framework has this. | `src/training/meta_trainer.py` |
+| **Combined Scorer** | Environment-aware weight profiles (chat/terminal/SWE/GUI) for multi-dimensional scoring | `src/rewards/combined_scorer.py` |
+| **Per-Worker Adapter Registry** | Targeted LoRA updates per worker — different workers can have different specializations | `src/inference/adapter_registry.py` |
+| **Multi-Environment Workers** | Terminal (Docker bash), SWE (GitHub issues), GUI (screenshot+action) with distinct scoring | `src/workers/` |
+| **Two-Layer Architecture** | NATS for orchestration + OpenRLHF for training — control plane / data plane split | `src/events/` + `src/training/openrlhf_backend.py` |
+
+### What We Adopt (Not Novel — Better Done Elsewhere)
+
+| Component | We Use | Instead Of |
+|---|---|---|
+| GRPO/DAPO training | OpenRLHF (Ray + vLLM + DeepSpeed) | Our CPU GRPOTrainer (kept for dev/testing) |
+| OPD hint extraction | OpenClaw-RL-style logprobs (vLLM) | Our lightweight LLM-based hints (kept as fallback) |
+| Rollout collection at scale | OpenRLHF's Ray workers | Our NATS-based rollout buffer |
+| Distributed training | DeepSpeed / FSDP | Nothing (we didn't have this) |
 
 ---
 
@@ -310,6 +341,12 @@ python -m venv .venv && source .venv/bin/activate
 # Base install (no GPU needed)
 pip install -e ".[dev]"
 
+# CLI (recommended way to interact)
+agentic-employees init                          # Set up config, pull model
+agentic-employees status                        # Check service health
+agentic-employees train --backend standalone    # CPU training
+agentic-employees serve                         # Start demo loop
+
 # Run tests (100 pass standalone, no NATS/Ollama needed)
 pytest tests/ -v
 
@@ -317,20 +354,10 @@ pytest tests/ -v
 nats-server &
 pytest tests/ -v
 
-# Run demo loop (requires NATS; falls back to EchoWorker without Ollama)
-python -m src
-
-# Run Bridge service standalone
-pip install -e ".[bridge]"
-python -m src.bridge
-
-# Run Training service standalone
-pip install -e ".[training]"
-python -m src.services.training
-
-# Run Intercept Proxy standalone
-pip install -e ".[intercept]"
-python -m src.intercept
+# Run individual services
+python -m src.bridge                            # Bridge service
+python -m src.services.training                 # Training service
+python -m src.intercept                         # Intercept proxy
 ```
 
 ### Optional Extras
@@ -358,7 +385,7 @@ All environment variables are optional with sensible defaults:
 | `INFERENCE_BACKEND` | `ollama` | `"ollama"` or `"openai"` (vLLM/Semantic Router) |
 | `INFERENCE_BASE_URL` | *(auto)* | Base URL for inference server |
 | `INFERENCE_API_KEY` | *(empty)* | API key for inference server |
-| `TRAINER_BACKEND` | `standalone` | `"standalone"` (GRPOTrainer) or `"openrlhf"` (GPU) |
+| `TRAINER_BACKEND` | `standalone` | `"standalone"` (GRPOTrainer) or `"openrlhf"` (OpenRLHF Ray backend) |
 | `BRIDGE_PORT` | `8100` | Bridge HTTP API port |
 | `MANAGER_ID` | `manager-01` | Manager agent ID |
 | `WORKER_ID` | `worker-01` | Worker agent ID |
@@ -366,6 +393,7 @@ All environment variables are optional with sensible defaults:
 | `INTERCEPT_ENABLED` | `false` | Enable inference intercept proxy |
 | `INTERCEPT_PORT` | `8200` | Intercept proxy port |
 | `INTERCEPT_BACKEND_URL` | `http://localhost:11434` | Backend URL for intercept proxy |
+| `OPD_MODE` | `lightweight` | `"lightweight"` (LLM hints) or `"openclaw"` (vLLM logprobs) |
 | `OPD_TEACHER_MODEL` | `qwen2.5:1.5b` | Teacher model for OPD hint extraction |
 | `OPD_JOIN_TIMEOUT` | `30.0` | Timeout for joining RL + OPD rollouts |
 | `OPD_WEIGHT` | `0.3` | Weight for OPD loss in combined training |
@@ -420,18 +448,20 @@ pytest tests/ -v                          # ~118 collected
 | **Phase 5** | Done | Inference abstraction, weight hot-swap, OpenRLHF integration |
 | **Phase 6** | Done | OpenClaw integration, Bridge Service, Docker Compose demo |
 | **Phase 7** | Done | ADHR — Intercept Proxy, OPD, CombinedScorer, Meta-RL, Adapter Registry |
-| **Phase 8** | Next | Trained PRM, DAPO graduation, multi-model routing, HaluGate |
+| **Phase 8** | In Progress | Adopt + Extend — CLI, OpenRLHF backend, OpenClaw-RL OPD, honest positioning |
+| **Phase 9** | Next | Trained PRM, DAPO graduation, HaluGate, benchmarks |
 
-### Phase 8 — What's Next
+### Phase 8 — Adopt + Extend (Current)
 
-| Item | Description | Prerequisite |
-|------|-------------|-------------|
-| **Trained PRM model** | Replace LLM-as-judge with a trained process reward model | 10K+ scored trajectories (accumulate via Docker demo) |
-| **DAPO graduation** | Upgrade GRPO to DAPO (Clip-Higher + dynamic sampling) | OpenRLHF functional + GPU access |
-| **Multi-model routing** | Semantic Router routes tasks to best-fit models | Deploy Semantic Router, configure `INFERENCE_BASE_URL` |
-| **HaluGate scorer** | Hallucination detection as complementary StepScorer | Implement StepScorer protocol adapter |
-| **OpenClaw WebSocket relay** | Bidirectional Bridge <--> OpenClaw session communication | websockets library integration |
-| **Pin OpenClaw Docker image** | Avoid breaking changes from `latest` tag | Find stable OpenClaw release |
+| Item | Status | Description |
+|------|--------|-------------|
+| **CLI entry point** | Done | `agentic-employees init/train/serve/status` commands |
+| **OpenRLHF backend** | Done | `Trainer` protocol adapter for Ray + vLLM + DeepSpeed training |
+| **OpenClaw-RL OPD mode** | Done | Per-token logprob extraction from vLLM teacher models |
+| **Honest README** | Done | Two-layer architecture, novel vs adopted components |
+| **Trained PRM model** | Next | Replace LLM-as-judge with trained process reward model |
+| **DAPO graduation** | Next | Full DAPO via OpenRLHF configuration |
+| **HaluGate scorer** | Next | Hallucination detection as complementary StepScorer |
 
 ---
 
@@ -473,13 +503,15 @@ Run the same tasks with Ollama vs vLLM via the InferenceClient protocol.
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| Event Broker | [NATS](https://nats.io) | Pub/sub agent coordination (10M+ msg/sec, <1ms latency) |
+| Orchestration | [NATS](https://nats.io) | Agent coordination, task routing, feedback events (control plane) |
 | Agent Runtime | [OpenClaw](https://github.com/openclaw/openclaw) | Identity, memory, web UI, skill execution |
 | LLM Inference | [Ollama](https://ollama.com) (dev) / [vLLM](https://github.com/vllm-project/vllm) (prod) | Model serving with LoRA hot-swap |
-| RL Training | Standalone GRPO / [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF) | Group-relative policy optimization with LoRA + OPD distillation |
+| RL Training | [OpenRLHF](https://github.com/OpenRLHF/OpenRLHF) (prod) / Standalone GRPO (dev) | Ray + vLLM + DeepSpeed for production; CPU-testable for dev |
+| OPD | [OpenClaw-RL](https://github.com/Gen-Verse/OpenClaw-RL)-style logprobs / lightweight hints | Per-token teacher logprobs (vLLM) or LLM hint extraction (fallback) |
 | Process Rewards | LLM-as-judge PRM | Step-level scoring (graduates to trained PRM) |
 | Intercept Proxy | [FastAPI](https://fastapi.tiangolo.com) | Transparent inference logging for OPD training data |
 | Serialization | [Pydantic v2](https://docs.pydantic.dev/) | Event type validation and JSON serialization |
+| CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://rich.readthedocs.io) | `agentic-employees init/train/serve/status` |
 
 ### Key Research
 

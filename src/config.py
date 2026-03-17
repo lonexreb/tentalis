@@ -40,6 +40,8 @@ class Config:
     opd_join_timeout: float = float(os.environ.get("OPD_JOIN_TIMEOUT", "30.0"))
     opd_weight: float = float(os.environ.get("OPD_WEIGHT", "0.3"))
     rl_weight: float = float(os.environ.get("RL_WEIGHT", "0.7"))
+    # OPD mode: "lightweight" (our LLM hint extraction) or "openclaw" (vLLM logprobs)
+    opd_mode: str = os.environ.get("OPD_MODE", "lightweight")
     # Asymmetric clipping
     training_clip_epsilon_high: float = float(os.environ.get("TRAINING_CLIP_EPSILON_HIGH", "0.28"))
     # Meta-RL

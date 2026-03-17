@@ -1,14 +1,15 @@
 # agentic-employees
 
-Managers managing AI agents with appraisal-style feedback loops. Agents learn continuously from manager feedback using RLHF/GRPO — like performance reviews that actually improve performance.
+ADHR meta-RL framework built on top of OpenRLHF/OpenClaw-RL. Agents learn continuously from manager feedback — like performance reviews that actually improve performance.
 
 ## Architecture
 
-Event-Driven Architecture (EDA):
+Two-Layer Architecture (control plane / data plane split):
+- **Orchestration Layer** (NATS): Agent coordination, task routing, manager feedback, meta-RL signals
+- **Training Layer** (OpenRLHF): Production GRPO/DAPO training via Ray + vLLM + DeepSpeed
 - **Control Plane**: OpenClaw (identity, memory, channels, UI)
-- **Event Broker**: NATS (pub/sub for agent coordination)
-- **Training Plane**: Standalone GRPO (lightweight) + OpenRLHF (production GPU)
 - **Inference**: InferenceClient protocol — Ollama (dev) or OpenAI-compatible (vLLM/Semantic Router)
+- **CLI**: `agentic-employees init|train|serve|status` (Typer + Rich)
 
 ## Language
 
@@ -19,6 +20,8 @@ Event-Driven Architecture (EDA):
 - [nats-py](https://github.com/nats-io/nats.py) — NATS client for event bus
 - [pydantic](https://docs.pydantic.dev/) — event type serialization (v2)
 - [ollama](https://github.com/ollama/ollama-python) — LLM inference via Ollama (async client)
+- [typer](https://typer.tiangolo.com) — CLI framework
+- [rich](https://rich.readthedocs.io) — CLI output formatting
 
 Dev: pytest, pytest-asyncio, pytest-aiohttp, ruff
 
@@ -35,6 +38,7 @@ Optional extras:
 ```
 src/
 ├── __main__.py    # Demo entry point (python -m src) — uses InferenceClient factory
+├── cli.py         # CLI entry point (agentic-employees init|train|serve|status)
 ├── config.py      # Frozen dataclass with env var defaults (NATS, inference, training)
 ├── manager/
 │   └── manager.py # Manager agent (assign tasks, wait for results, publish feedback)
@@ -65,7 +69,8 @@ src/
 │   ├── combined_trainer.py    # CombinedTrainer — merged RL + OPD distillation loss
 │   ├── meta_trainer.py        # ManagerMetaTrainer — outer-loop RL for manager feedback quality
 │   ├── loop.py                # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent, combined support)
-│   └── openrlhf_launcher.py   # OpenRLHFLauncher — subprocess launcher for production GRPO training
+│   ├── openrlhf_launcher.py   # OpenRLHFLauncher — subprocess launcher (legacy, kept for direct CLI usage)
+│   └── openrlhf_backend.py    # OpenRLHFBackend — Trainer protocol adapter for Ray+vLLM+DeepSpeed training
 ├── intercept/
 │   ├── __main__.py    # Entrypoint: python -m src.intercept
 │   └── proxy.py       # InterceptProxy — FastAPI proxy logging SessionEvents to NATS
@@ -148,12 +153,13 @@ docs/
 | INFERENCE_BASE_URL | (auto) | Base URL for inference server |
 | INFERENCE_API_KEY | (empty) | API key for inference server |
 | VLLM_LORA_NAME | default | LoRA adapter name for vLLM |
-| TRAINER_BACKEND | standalone | `"standalone"` (GRPOTrainer) or `"openrlhf"` (OpenRLHFLauncher) |
+| TRAINER_BACKEND | standalone | `"standalone"` (GRPOTrainer) or `"openrlhf"` (OpenRLHFBackend) |
 | BRIDGE_PORT | 8100 | Bridge HTTP API port |
 | OPENCLAW_GATEWAY_URL | ws://localhost:18789 | OpenClaw gateway WebSocket URL |
 | INTERCEPT_ENABLED | false | Enable intercept proxy |
 | INTERCEPT_PORT | 8200 | Intercept proxy port |
 | INTERCEPT_BACKEND_URL | http://localhost:11434 | Backend URL for intercept proxy |
+| OPD_MODE | lightweight | `"lightweight"` (LLM hints) or `"openclaw"` (vLLM logprobs) |
 | OPD_TEACHER_MODEL | qwen2.5:1.5b | Teacher model for OPD hint extraction |
 | OPD_JOIN_TIMEOUT | 30.0 | Timeout (seconds) for joining RL + OPD rollouts |
 | OPD_WEIGHT | 0.3 | Weight for OPD loss in combined training |
@@ -175,21 +181,19 @@ Conventional commits:
 
 ## Current Phase
 
-**Phase 7 complete** — ADHR (Appraisal-Driven Hierarchical RL) with OpenClaw-RL integration.
+**Phase 8 in progress** — Adopt + Extend architecture reassessment.
 
-- Intercept Proxy (`src/intercept/`) — FastAPI proxy logging SessionEvents to NATS
-- OPD Hint Extraction (`src/opd/hint_extractor.py`) — manager textual feedback → corrective hints + teacher logprobs
-- Combined Rollout Builder (`src/opd/rollout_builder.py`) — joins RL + OPD signals by task_id with timeout
-- Combined Trainer (`src/training/combined_trainer.py`) — merged RL + OPD loss with asymmetric clipping
-- Combined Scorer (`src/rewards/combined_scorer.py`) — multi-scorer composition with per-environment weight profiles
-- Manager Meta-RL (`src/training/meta_trainer.py`) — outer-loop RL training for manager feedback quality
-- Per-Worker Adapter Registry (`src/inference/adapter_registry.py`) — worker_id → LoRA adapter management
-- Multi-Environment Workers — TerminalWorker (Docker bash), SWEWorker (issue→patch), GUIWorker (screenshot+action)
-- `target_worker_id` on ModelUpdateEvent for per-worker model targeting
-- `environment_type` on BaseWorker for environment-specific scoring
-- Asymmetric clipped surrogate loss + combined loss in `grpo.py`
-- Docker Compose updated with intercept-proxy service (6 services total)
-- 106+ tests (100 pass standalone, 14 skip without torch)
+Phase 8 additions:
+- CLI entry point (`src/cli.py`) — `agentic-employees init|train|serve|status` via Typer + Rich
+- OpenRLHF training backend (`src/training/openrlhf_backend.py`) — Trainer protocol adapter for Ray+vLLM+DeepSpeed
+- OpenClaw-RL OPD mode (`src/opd/hint_extractor.py`) — per-token logprob extraction from vLLM teacher models
+- Backend selection in `src/services/training.py` — standalone vs openrlhf
+- `OPD_MODE` config var — "lightweight" or "openclaw"
+- Docker Compose with commented OpenRLHF GPU trainer service
+- Honest README positioning — two-layer architecture, novel vs adopted components
+
+Phase 7 (complete):
+- Intercept Proxy, OPD, CombinedScorer, Meta-RL, Adapter Registry, Multi-env Workers
 
 Previous phases:
 - Phase 6: OpenClaw integration, Bridge Service, Docker Compose demo
@@ -199,7 +203,7 @@ Previous phases:
 - Phase 2: Event loop, Manager/Worker agents, EchoWorker
 - Phase 1: Scaffolding, docs, git
 
-**Phase 8 (next):** Trained PRM model, DAPO graduation, multi-model routing in Semantic Router, HaluGate scorer.
+**Phase 9 (next):** Trained PRM model, DAPO graduation, HaluGate scorer, benchmarks.
 
 ## Key Documents
 
