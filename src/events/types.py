@@ -119,3 +119,59 @@ class ManagerMetaRollout(BaseModel):
     mean_score_before: float = 0.0
     mean_score_after: float = 0.0
     created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SkillCreatedEvent(BaseModel):
+    """Published when a new skill is extracted from feedback."""
+
+    skill_id: str = Field(default_factory=_new_id)
+    task_id: str
+    worker_id: str
+    skill_name: str
+    skill_text: str
+    category: str = "general"
+    source_feedback: str = ""
+    source_score: float = 0.0
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SessionStartEvent(BaseModel):
+    """Published when a new proxy session begins."""
+
+    session_id: str = Field(default_factory=_new_id)
+    worker_id: str = ""
+    model: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class SessionEndEvent(BaseModel):
+    """Published when a proxy session ends."""
+
+    session_id: str
+    worker_id: str = ""
+    turn_count: int = 0
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class AlignmentEvalEvent(BaseModel):
+    """Result of a behavioral alignment evaluation."""
+
+    eval_id: str = Field(default_factory=_new_id)
+    experiment_name: str
+    worker_id: str
+    scenario_name: str
+    metrics: dict[str, float] = Field(default_factory=dict)
+    passed: bool = True
+    details: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)
+
+
+class AuditLogEvent(BaseModel):
+    """Mirror of any NATS event for full audit trail."""
+
+    audit_id: str = Field(default_factory=_new_id)
+    original_topic: str
+    original_event_type: str
+    payload_json: str
+    source_component: str = ""
+    created_at: datetime = Field(default_factory=_utcnow)

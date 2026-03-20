@@ -1,10 +1,14 @@
 # NEXT-TO-DO
 
-What to build next. Phase 8 shifts from "build everything from scratch" to "adopt + extend" — use battle-tested training infrastructure (OpenRLHF/veRL) and focus our effort on genuinely novel components.
+What to build next. Phase 9b completed alignment experiment infrastructure — 6 experiments, 40 scenarios, 79 tests, full audit trail. Now focusing on Phase 9c: trained models, advanced scorers, and benchmarks.
 
-> **Phase 7 completed** — OPD, Combined Training, Meta-RL, Multi-Environment Workers, Intercept Proxy, and Per-Worker Adapter Registry.
+> **Phase 8 completed** — CLI, OpenRLHF backend, OpenClaw-RL OPD mode, honest positioning.
 >
-> **Phase 8 in progress** — CLI, OpenRLHF backend integration, OpenClaw-RL OPD mode, honest architecture positioning.
+> **Phase 9a completed** — Majority Voting PRM, SkillRL, Tinker backend, Setup Wizard, Training Scheduler.
+>
+> **Phase 9b completed** — Alignment experiments, collusion detection, reward hacking detection, audit logger, Streamlit dashboard.
+>
+> **Phase 9c next** — Trained PRM, DAPO graduation, HaluGate, CISPO, benchmarks.
 
 ---
 
@@ -38,46 +42,68 @@ TRAINING LAYER (adopt existing — don't reinvent)
 
 ---
 
-## Phase 8 — Adopt + Extend
+## Phase 8 — Adopt + Extend ✅ Complete
 
 ### 8.1 CLI Entry Point ✅ Done
-- `agentic-employees init` — sets up config, pulls base model
-- `agentic-employees train --backend openrlhf|standalone` — one command to train
-- `agentic-employees serve --docker` — starts via Docker Compose
-- `agentic-employees status` — shows all service health
-
 ### 8.2 OpenRLHF Training Backend ✅ Done
-- `OpenRLHFBackend` implements `Trainer` protocol
-- Exports our rollouts to JSONL → feeds to OpenRLHF Ray training
-- Falls back to simulation mode on CPU (validates data flow without GPU)
-- `src/services/training.py` uses backend selection: standalone vs openrlhf
-- Keeps our custom GRPOTrainer for CPU testing/dev
-
 ### 8.3 OpenClaw-RL OPD Mode ✅ Done
-- `HintExtractor` now supports `opd_mode="openclaw"` for vLLM logprob extraction
-- Uses OpenAI completions API with `logprobs=True` on vLLM backend
-- Extracts per-token log probabilities as directional training signal
-- Falls back to lightweight mode if vLLM logprobs unavailable
-- Config: `OPD_MODE=openclaw` env var
 
-### 8.4 Trained PRM Model
+---
+
+## Phase 9a — MetaClaw Adoption ✅ Complete
+
+- Majority Voting PRM (parallel LLM judge evals with median aggregation)
+- SkillRL (skill store, embedding retriever, evolver from feedback)
+- Tinker training backend (cloud-managed RL via Tinker SDK)
+- Interactive setup wizard (Rich multi-step config wizard)
+- Session-stateful intercept proxy (session tracking + skill injection)
+- Training scheduler (time-window gated training)
+
+---
+
+## Phase 9b — Alignment Experiments ✅ Complete
+
+- 40 behavioral scenarios (deception, reward hacking, safety-pragmatism, collusion)
+- PatternBasedEvaluator + LLMJudgeEvaluator with BehavioralEvalHarness
+- HackableScorer + RewardHackingDetector
+- MisalignedWorker (keyword stuffing, confidence inflation, shortcut)
+- CollusionDetector (Pearson correlation + Jaccard n-gram similarity)
+- AuditLogger (subscribe_raw → JSONL)
+- ExperimentRunner (6 experiments, mock mode)
+- Streamlit dashboard (experiment overview, audit timeline, constitution editor)
+- CLI: `agentic-employees experiment run|results`
+- See [EXPERIMENT.md](./EXPERIMENT.md) for details.
+
+---
+
+## Phase 9c — Advanced Scorers + Benchmarks (Next)
+
+### 9c.1 Trained PRM Model
 - **What:** Replace LLM-as-judge with a trained process reward model (classifier head on frozen LLM)
 - **Why:** LLM-as-judge is slow (~1s per step), expensive, inconsistent. Trained PRM is 10-100x faster.
 - **Prerequisite:** Accumulate 10K+ scored trajectories via the Docker demo loop
 - **Implementation:** Fine-tune small model (Qwen2.5:0.5b) with scalar reward head. Implement `TrainedPRMScorer` as `StepScorer` protocol adapter. Plug into CombinedScorer.
 - **Research:** [Let's Verify Step by Step](https://arxiv.org/abs/2305.20050), [AgentPRM](https://arxiv.org/abs/2502.10325)
 
-### 8.5 DAPO Graduation
+### 9c.2 DAPO Graduation
 - **What:** Upgrade GRPO to full DAPO (Dynamic Advantage Policy Optimization)
 - **Phase 7 progress:** Asymmetric clipping (Clip-Higher) done in `asymmetric_clipped_surrogate_loss()`.
 - **Remaining:** Dynamic sampling (oversample, filter low-reward, keep diverse rollouts) + entropy bonus.
 - **Implementation:** With OpenRLHF backend, this becomes configuration — OpenRLHF supports DAPO natively.
 - **Research:** [DAPO (ByteDance)](https://arxiv.org/abs/2503.14476)
 
-### 8.6 HaluGate Scorer
+### 9c.3 HaluGate Scorer
 - **What:** Hallucination detection as complementary `StepScorer`
 - **Why:** PRM scores reasoning quality but doesn't catch factual hallucinations.
 - **Implementation:** `HaluGateScorer` as `StepScorer` protocol adapter. Score = similarity between step claims and retrieved evidence. Combine with PRM via CombinedScorer.
+
+### 9c.4 CISPO Contrastive Loss
+- **What:** Contrastive loss between aligned vs misaligned trajectories.
+- **Why:** Phase 9b alignment experiments produce natural contrastive pairs (MisalignedWorker = negatives, EchoWorker/LLMWorker = positives).
+
+### 9c.5 Benchmark Suite
+- **What:** Reproducible benchmarks on MATH, HumanEval, GSM8K.
+- **Why:** Quantify improvement from GRPO training with standardized tasks.
 
 ---
 
@@ -145,27 +171,24 @@ TRAINING LAYER (adopt existing — don't reinvent)
 
 ---
 
-## Sequencing (Phase 8 Forward)
+## Sequencing (Phase 9c Forward)
 
 ```
 Now ──────────────────────────────────────────────────────────────► Later
 
-[8.1 CLI] ✅ ──► [8.2 OpenRLHF Backend] ✅ ──► [8.5 DAPO (via OpenRLHF)]
-[8.3 OpenClaw OPD] ✅ ──► [2.1 Token OPD Advantages]
+[9c.1 Trained PRM] ──► [9c.5 Benchmarks]
+[9c.2 DAPO] (via OpenRLHF config)
+[9c.3 HaluGate] ──► CombinedScorer integration
+[9c.4 CISPO] ──► uses Phase 9b alignment data
 
-[3.2 Trajectory Store] ──► [8.4 Trained PRM] ──► [4.4 Benchmarks]
-
-[2.3 Majority Voting] (trivial)
-[8.6 HaluGate] ──► CombinedScorer integration
-
-[3.3 WebSocket Relay] ──► [2.2 Implicit Signals]
-[2.4 Turn Classification] ──► noise filtering
+[2.1 Token OPD Advantages] ──► CombinedTrainer upgrade
+[3.2 Trajectory Store] ──► unblocks Trained PRM
 
 [4.1 K8s] ──► [4.2 Observability] ──► [4.3 CI/CD]
 ```
 
 **Immediate next:**
-1. **3.2 Trajectory Store** — unblocks Trained PRM (8.4)
-2. **2.3 Majority Voting** — trivial improvement to scoring reliability
-3. **8.6 HaluGate** — plug into CombinedScorer, no new infrastructure
+1. **3.2 Trajectory Store** — unblocks Trained PRM (9c.1)
+2. **9c.3 HaluGate** — plug into CombinedScorer, no new infrastructure
+3. **9c.4 CISPO** — leverage alignment experiment data for contrastive training
 4. **2.1 Token OPD Advantages** — build on OpenClaw OPD mode

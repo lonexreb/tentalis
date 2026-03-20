@@ -575,3 +575,119 @@ Living document tracking experiments, findings, and technical decisions across p
 - True per-token OPD advantages in CombinedTrainer
 - Implicit signal extraction from sessions/tool failures
 - Benchmark suite (MATH, HumanEval, GSM8K)
+
+---
+
+## Phase 9a: MetaClaw Adoption
+
+**Date:** 2026-03-18
+
+**Scope:** Adopt MetaClaw-validated patterns: majority voting PRM, SkillRL skill injection, Tinker cloud training backend, interactive setup wizard, session-stateful intercept proxy, time-window training scheduler.
+
+**Outcome:** 6 new modules added. Majority voting with median aggregation in LLMJudgeScorer. SkillStore + SkillRetriever + SkillEvolver for feedback-driven skill extraction. TinkerBackend as Trainer protocol adapter. SetupWizard via Rich prompts. SessionManager for proxy conversation tracking. TrainingScheduler with UTC time-window gating.
+
+**Key Finding:** Protocol-first design (StepScorer, Trainer, InferenceClient) made all additions zero-touch on existing code. TinkerBackend, HackableScorer, and all new components plug in via the same interfaces.
+
+---
+
+## Phase 9b: Alignment Experiments
+
+**Date:** 2026-03-19
+
+**Scope:** Build alignment experiment infrastructure to produce quantified evidence that the ADHR multi-agent framework catches misalignment, prevents reward hacking, and produces auditable decisions. 6 experiments, 40 behavioral scenarios, 79 tests.
+
+### Key Decision: Mock-First Experiment Design
+
+- **Problem:** Alignment experiments that require live NATS + LLM + GPU are too slow and fragile for CI/CD.
+- **Decision:** Every experiment runs in mock mode (no external deps) using EchoWorker + PatternBasedEvaluator + MockTrainer. Real mode layers on NATS + LLM when available.
+- **Validation:** All 79 tests pass standalone in <1s. `agentic-employees experiment run all` produces JSON results without any services running.
+
+### Experiments
+
+#### 9b.1 Scenario Library (`src/alignment/scenarios.py`)
+
+- **Design:** `AlignmentScenario` frozen dataclass with `name`, `experiment`, `prompt`, `expected_behavior`, `misaligned_indicators`, `safety_relevant`, `metadata`.
+- **4 scenario sets** (10 each): deception, reward hacking, safety-pragmatism, collusion.
+- **Finding:** Pattern-based evaluation (substring matching against `misaligned_indicators`) works reliably for keyword-stuffing and confidence-inflation detection. Sufficient for mock-mode experiments, upgradeable to LLMJudgeEvaluator for real mode.
+
+#### 9b.2 Behavioral Eval Harness (`src/alignment/behavioral_eval.py`)
+
+- **Design:** `BehavioralEvaluator` protocol with two implementations: `PatternBasedEvaluator` (no LLM) and `LLMJudgeEvaluator` (uses InferenceClient). `BehavioralEvalHarness` orchestrates: scenarios → worker_fn → evaluate → publish AlignmentEvalEvent → write JSON.
+- **Finding:** Worker function pattern (`Callable[[str], Awaitable[tuple[str, list[str]]]]`) cleanly decouples evaluation from actual worker infrastructure. Any async function that takes a prompt and returns (response, steps) can be evaluated.
+
+#### 9b.3 Hackable Scorer + Reward Hacking Detection
+
+- **HackableScorer:** Implements `StepScorer` protocol. Scores high if steps contain keywords ("verified", "correct", "accurate") regardless of quality. Base score 0.3, keyword boost up to 0.6.
+- **RewardHackingDetector:** Tracks hackable vs judge score trajectories. Flags when divergence exceeds threshold (default 0.2).
+- **Finding:** Misaligned keyword-stuffing worker reliably triggers divergence detection. The CombinedScorer's multi-scorer architecture is validated as a defense mechanism.
+
+#### 9b.4 Misaligned Worker
+
+- **Design:** Extends `BaseWorker` with 3 strategies: keyword_stuffing (injects scoring keywords), confidence_inflation (claims 100% certainty), shortcut (minimal steps).
+- **Finding:** Keyword stuffing reliably games HackableScorer but fails PatternBasedEvaluator. Confidence inflation triggers deception scenario indicators. Shortcut produces minimal output that evades some checks.
+
+#### 9b.5 Collusion Detector
+
+- **Design:** Pearson correlation between worker score trajectories + Jaccard similarity of character n-grams between worker responses.
+- **Finding:** Perfectly colluding workers (identical scores + responses) produce correlation >0.99 and similarity 1.0. Independent workers stay well below thresholds.
+
+#### 9b.6 Audit Logger
+
+- **Design:** Subscribes to all known NATS topics via `subscribe_raw()` (new method on EventBus). Writes every event to JSONL with timestamp, topic, inferred event type, and full payload.
+- **Finding:** Event type inference from JSON field presence works well (task_id+prompt → TaskEvent, result+worker_id → ResultEvent, etc.). Handles malformed JSON gracefully.
+
+#### 9b.7 Experiment Runner + CLI
+
+- **ExperimentRunner:** One method per experiment (`run_experiment_1()` through `run_experiment_6()`). All return structured dicts, write JSON to `alignment_results/`.
+- **CLI:** `agentic-employees experiment run {1-6|all}` + `agentic-employees experiment results` (Rich table).
+- **Finding:** Mock mode produces meaningful results. Experiment 2 correctly detects reward hacking, Experiment 4 correctly detects collusion.
+
+#### 9b.8 Streamlit Dashboard
+
+- **3 tabs:** Experiment Overview (metrics per experiment), Audit Trail (searchable JSONL viewer), Constitution Editor (CombinedScorer weight sliders + feedback template).
+- **Finding:** Reads JSON/JSONL files directly — no server dependency. Works standalone with `streamlit run src/alignment/dashboard/app.py`.
+
+### Test Summary
+
+| Test Suite | Tests | Deps | Speed | Status |
+|------------|-------|------|-------|--------|
+| `test_scenarios.py` | 12 | None | <1s | PASS |
+| `test_behavioral_eval.py` | 12 | None | <1s | PASS |
+| `test_hackable_scorer.py` | 11 | None | <1s | PASS |
+| `test_misaligned_worker.py` | 8 | None | <1s | PASS |
+| `test_collusion_detector.py` | 16 | None | <1s | PASS |
+| `test_audit_logger.py` | 9 | None | <1s | PASS |
+| `test_runner.py` | 8 | None | <1s | PASS |
+| Existing tests (unchanged) | 162 | various | ~1s | PASS |
+| **Total standalone** | **241 pass, 22 skip** | | **~1.3s** | |
+
+### Files
+
+| Action | Path |
+|--------|------|
+| CREATE | `EXPERIMENT.md` — experiment tracking document |
+| CREATE | `src/alignment/__init__.py` |
+| CREATE | `src/alignment/scenarios.py` — 40 scenarios in 4 categories |
+| CREATE | `src/alignment/behavioral_eval.py` — eval harness + 2 evaluators |
+| CREATE | `src/alignment/hackable_scorer.py` — deliberately weak scorer + detector |
+| CREATE | `src/alignment/misaligned_worker.py` — rogue worker (3 strategies) |
+| CREATE | `src/alignment/collusion_detector.py` — Pearson + Jaccard detector |
+| CREATE | `src/alignment/audit_logger.py` — JSONL audit capture |
+| CREATE | `src/alignment/runner.py` — 6 experiment orchestrator |
+| CREATE | `src/alignment/dashboard/__init__.py`, `app.py` — Streamlit dashboard |
+| CREATE | `tests/alignment/` — 7 test files (79 tests) |
+| MODIFY | `src/events/types.py` — AlignmentEvalEvent, AuditLogEvent |
+| MODIFY | `src/events/topics.py` — ALIGNMENT_EVALS, ALIGNMENT_AUDIT |
+| MODIFY | `src/events/bus.py` — subscribe_raw() method |
+| MODIFY | `src/config.py` — 3 alignment config fields |
+| MODIFY | `src/cli.py` — experiment subcommand group |
+| MODIFY | `pyproject.toml` — alignment optional extras |
+
+### Deferred to Phase 9c
+
+- Trained PRM model (replace LLM-as-judge)
+- DAPO graduation (full DAPO via OpenRLHF)
+- HaluGate hallucination scorer
+- CISPO contrastive loss
+- Benchmark suite (MATH, HumanEval, GSM8K)
+- Real-mode experiments with live NATS + LLM

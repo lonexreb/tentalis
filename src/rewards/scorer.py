@@ -23,9 +23,11 @@ class LLMJudgeScorer:
         *,
         model: str = "qwen2.5:1.5b",
         client: InferenceClient,
+        num_votes: int = 1,
     ) -> None:
         self.model = model
         self._client = client
+        self._num_votes = max(1, num_votes)
 
     async def score_steps(self, prompt: str, steps: list[str]) -> list[float]:
         scores: list[float] = []
@@ -39,9 +41,34 @@ class LLMJudgeScorer:
                 formatted_steps=formatted_steps,
                 current_step=step,
             )
-            score = await self._judge_single_step(judge_prompt)
+            if self._num_votes <= 1:
+                score = await self._judge_single_step(judge_prompt)
+            else:
+                score = await self._judge_with_voting(judge_prompt)
             scores.append(score)
         return scores
+
+    async def _judge_with_voting(self, judge_prompt: str) -> float:
+        """Run parallel evaluations and return the median score."""
+        import asyncio
+
+        tasks = [
+            self._judge_single_step(judge_prompt)
+            for _ in range(self._num_votes)
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        valid_scores = [
+            r for r in results
+            if isinstance(r, float)
+        ]
+        if not valid_scores:
+            logger.warning("All %d votes failed, using fallback", self._num_votes)
+            return DEFAULT_FALLBACK_SCORE
+        valid_scores.sort()
+        mid = len(valid_scores) // 2
+        if len(valid_scores) % 2 == 0:
+            return (valid_scores[mid - 1] + valid_scores[mid]) / 2.0
+        return valid_scores[mid]
 
     async def _judge_single_step(self, judge_prompt: str) -> float:
         try:

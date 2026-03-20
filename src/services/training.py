@@ -30,6 +30,19 @@ def _create_trainer(cfg: Config) -> object:
         logger.info("Using OpenRLHF backend with model=%s", cfg.training_model)
         return trainer
 
+    if cfg.trainer_backend == "tinker":
+        from src.training.tinker_backend import TinkerBackend
+
+        trainer = TinkerBackend(
+            api_key=cfg.tinker_api_key,
+            base_url=cfg.tinker_base_url,
+            model_name=cfg.training_model,
+            learning_rate=cfg.training_lr,
+            clip_range=cfg.training_clip_epsilon,
+        )
+        logger.info("Using Tinker backend with model=%s", cfg.training_model)
+        return trainer
+
     # Standalone backend: try GRPOTrainer, fall back to MockTrainer
     try:
         from src.training.trainer import GRPOTrainer
@@ -72,7 +85,9 @@ async def main() -> None:
         from src.rewards.prm_evaluator import PRMEvaluator
         from src.rewards.scorer import LLMJudgeScorer
 
-        scorer = LLMJudgeScorer(model=cfg.llm_model, client=inference_client)
+        scorer = LLMJudgeScorer(
+            model=cfg.llm_model, client=inference_client, num_votes=cfg.prm_num_votes,
+        )
         evaluator = PRMEvaluator(bus, scorer)
         await evaluator.start(["coding"])
         logger.info("PRMEvaluator started")

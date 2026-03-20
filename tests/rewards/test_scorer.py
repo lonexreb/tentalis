@@ -49,3 +49,60 @@ async def test_missing_keys_fallback(scorer, mock_client):
     scores = await scorer.score_steps("task", ["step"])
     # Both default to 0.5, average = 0.5
     assert scores == [DEFAULT_FALLBACK_SCORE]
+
+
+# --- Majority voting tests ---
+
+
+@pytest.fixture
+def voting_scorer(mock_client):
+    return LLMJudgeScorer(model="test-model", client=mock_client, num_votes=3)
+
+
+async def test_voting_calls_multiple_times(voting_scorer, mock_client):
+    mock_client.chat.return_value = _make_judge_response(0.8, 0.6)
+    scores = await voting_scorer.score_steps("task", ["step"])
+    # 3 votes per step
+    assert mock_client.chat.call_count == 3
+    assert len(scores) == 1
+
+
+async def test_voting_returns_median(voting_scorer, mock_client):
+    # Return different scores across the 3 votes
+    mock_client.chat.side_effect = [
+        _make_judge_response(0.8, 0.8),  # score = 0.8
+        _make_judge_response(0.4, 0.4),  # score = 0.4
+        _make_judge_response(0.6, 0.6),  # score = 0.6
+    ]
+    scores = await voting_scorer.score_steps("task", ["step"])
+    # Median of [0.4, 0.6, 0.8] = 0.6
+    assert scores == [pytest.approx(0.6)]
+
+
+async def test_voting_handles_partial_failure(mock_client):
+    scorer = LLMJudgeScorer(model="test-model", client=mock_client, num_votes=3)
+    # One returns bad JSON (falls back to 0.5), two succeed
+    mock_client.chat.side_effect = [
+        _make_judge_response(0.8, 0.8),  # score = 0.8
+        "not json",                       # fallback score = 0.5
+        _make_judge_response(0.6, 0.6),  # score = 0.6
+    ]
+    scores = await scorer.score_steps("task", ["step"])
+    # Median of [0.5, 0.6, 0.8] = 0.6
+    assert scores == [pytest.approx(0.6)]
+
+
+async def test_voting_all_fail_returns_fallback(mock_client):
+    scorer = LLMJudgeScorer(model="test-model", client=mock_client, num_votes=3)
+    mock_client.chat.side_effect = Exception("LLM down")
+    scores = await scorer.score_steps("task", ["step"])
+    assert scores == [DEFAULT_FALLBACK_SCORE]
+
+
+async def test_num_votes_one_same_as_default(mock_client):
+    scorer = LLMJudgeScorer(model="test-model", client=mock_client, num_votes=1)
+    mock_client.chat.return_value = _make_judge_response(0.8, 0.6)
+    scores = await scorer.score_steps("task", ["step"])
+    # With num_votes=1, should use direct call (not voting)
+    assert mock_client.chat.call_count == 1
+    assert scores == [pytest.approx(0.7)]

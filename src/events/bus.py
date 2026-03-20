@@ -53,3 +53,19 @@ class EventBus:
         sub = await self._nc.subscribe(topic, cb=_msg_handler)
         self._subscriptions.append(sub)
         logger.info("Subscribed to %s", topic)
+
+    async def subscribe_raw(
+        self,
+        topic: str,
+        handler: Callable[[str, bytes], Awaitable[None]],
+    ) -> None:
+        """Subscribe to raw bytes on a topic (used by audit logger)."""
+        if not self._nc:
+            raise RuntimeError("EventBus not connected")
+
+        async def _msg_handler(msg: object) -> None:
+            await handler(topic, msg.data)
+
+        sub = await self._nc.subscribe(topic, cb=_msg_handler)
+        self._subscriptions.append(sub)
+        logger.info("Subscribed (raw) to %s", topic)

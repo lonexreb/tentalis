@@ -48,3 +48,20 @@ class Config:
     meta_rl_enabled: bool = os.environ.get("META_RL_ENABLED", "false").lower() == "true"
     meta_rl_window_size: int = int(os.environ.get("META_RL_WINDOW_SIZE", "200"))
     meta_rl_min_feedback: int = int(os.environ.get("META_RL_MIN_FEEDBACK", "200"))
+    # PRM majority voting (Phase 9)
+    prm_num_votes: int = int(os.environ.get("PRM_NUM_VOTES", "3"))
+    # SkillRL (Phase 9)
+    skills_enabled: bool = os.environ.get("SKILLS_ENABLED", "false").lower() == "true"
+    skills_dir: str = os.environ.get("SKILLS_DIR", "skills_data")
+    skill_evolution_threshold: float = float(os.environ.get("SKILL_EVOLUTION_THRESHOLD", "0.4"))
+    skill_retrieval_top_k: int = int(os.environ.get("SKILL_RETRIEVAL_TOP_K", "3"))
+    # Tinker training backend (Phase 9)
+    tinker_api_key: str = os.environ.get("TINKER_API_KEY", "")
+    tinker_base_url: str = os.environ.get("TINKER_BASE_URL", "https://api.tinker.thinkingmachines.ai")
+    # Training scheduler (Phase 9)
+    training_schedule_enabled: bool = os.environ.get("TRAINING_SCHEDULE_ENABLED", "false").lower() == "true"
+    training_schedule_hours: str = os.environ.get("TRAINING_SCHEDULE_HOURS", "02:00-06:00")
+    # Alignment experiments (Phase 9)
+    alignment_enabled: bool = os.environ.get("ALIGNMENT_ENABLED", "false").lower() == "true"
+    alignment_results_dir: str = os.environ.get("ALIGNMENT_RESULTS_DIR", "alignment_results")
+    alignment_audit_all: bool = os.environ.get("ALIGNMENT_AUDIT_ALL", "false").lower() == "true"

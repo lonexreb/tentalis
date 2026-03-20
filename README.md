@@ -6,13 +6,13 @@
 **ADHR meta-RL framework built on top of OpenRLHF/OpenClaw-RL — agents that learn from manager feedback.**
 
 [![Python](https://img.shields.io/badge/Python-%3E%3D3.10-3776AB?logo=python&logoColor=white)](https://python.org)
-[![Tests](https://img.shields.io/badge/Tests-100%20passing-brightgreen?logo=pytest&logoColor=white)](tests/)
-[![Phase](https://img.shields.io/badge/Phase-8-blueviolet)](RESEARCH-EXPERIMENT.md)
+[![Tests](https://img.shields.io/badge/Tests-241%20passing-brightgreen?logo=pytest&logoColor=white)](tests/)
+[![Phase](https://img.shields.io/badge/Phase-9b-blueviolet)](RESEARCH-EXPERIMENT.md)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 [![NATS](https://img.shields.io/badge/Orchestration-NATS-27AAE1?logo=natsdotio&logoColor=white)](https://nats.io)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 
-[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Novel Contributions](#novel-contributions) | [Why agentic-employees?](#why-agentic-employees) | [Roadmap](#roadmap)
+[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Alignment Experiments](#alignment-experiments) | [Novel Contributions](#novel-contributions) | [Why agentic-employees?](#why-agentic-employees) | [Roadmap](#roadmap)
 
 </div>
 
@@ -75,6 +75,8 @@ agentic-employees serve --docker                # Start all services
 agentic-employees status                        # Check everything is running
 agentic-employees train --backend standalone    # CPU training (dev)
 agentic-employees train --backend openrlhf      # GPU training (production)
+agentic-employees experiment run all            # Run alignment experiments
+agentic-employees experiment results            # View experiment results
 ```
 
 ### Via Docker Compose
@@ -109,6 +111,8 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 | One-size-fits-all scoring | **CombinedScorer** — environment-aware weight profiles (chat/terminal/SWE/GUI) |
 | Manager never improves | **Meta-RL** outer loop trains the manager to give better feedback |
 | Per-worker model updates | **Adapter Registry** — per-worker LoRA adapters with targeted model updates |
+| No alignment evidence | **6 alignment experiments** — deception detection, reward hacking, collusion, audit trail |
+| Black-box agent decisions | **Full audit logger** — every NATS event captured to JSONL with compliance mapping |
 
 ---
 
@@ -123,6 +127,7 @@ These are the components that differentiate agentic-employees from existing fram
 | **Per-Worker Adapter Registry** | Targeted LoRA updates per worker — different workers can have different specializations | `src/inference/adapter_registry.py` |
 | **Multi-Environment Workers** | Terminal (Docker bash), SWE (GitHub issues), GUI (screenshot+action) with distinct scoring | `src/workers/` |
 | **Two-Layer Architecture** | NATS for orchestration + OpenRLHF for training — control plane / data plane split | `src/events/` + `src/training/openrlhf_backend.py` |
+| **Alignment Experiment Suite** | 6 reproducible experiments with 40 scenarios, collusion detection, reward hacking detection, and full audit trail | `src/alignment/` |
 
 ### What We Adopt (Not Novel — Better Done Elsewhere)
 
@@ -346,8 +351,9 @@ agentic-employees init                          # Set up config, pull model
 agentic-employees status                        # Check service health
 agentic-employees train --backend standalone    # CPU training
 agentic-employees serve                         # Start demo loop
+agentic-employees experiment run all            # Run alignment experiments
 
-# Run tests (100 pass standalone, no NATS/Ollama needed)
+# Run tests (241 pass standalone, no NATS/Ollama needed)
 pytest tests/ -v
 
 # Run full integration tests (requires nats-server)
@@ -370,6 +376,7 @@ python -m src.intercept                         # Intercept proxy
 | vLLM | `pip install -e ".[vllm]"` | vLLM GPU inference server |
 | OpenRLHF | `pip install -e ".[openrlhf]"` | Production GRPO training (Ray + DeepSpeed) |
 | Intercept | `pip install -e ".[intercept]"` | fastapi, uvicorn, httpx (Inference Intercept Proxy) |
+| Alignment | `pip install -e ".[alignment]"` | streamlit (Alignment experiment dashboard) |
 
 ---
 
@@ -401,6 +408,9 @@ All environment variables are optional with sensible defaults:
 | `TRAINING_CLIP_EPSILON_HIGH` | `0.28` | Asymmetric high clip bound |
 | `META_RL_ENABLED` | `false` | Enable manager meta-RL training |
 | `META_RL_WINDOW_SIZE` | `200` | Sliding window for meta-RL score tracking |
+| `ALIGNMENT_ENABLED` | `false` | Enable alignment experiment infrastructure |
+| `ALIGNMENT_RESULTS_DIR` | `alignment_results` | Directory for experiment result JSON files |
+| `ALIGNMENT_AUDIT_ALL` | `false` | Enable full NATS event audit logging |
 
 ---
 
@@ -408,14 +418,17 @@ All environment variables are optional with sensible defaults:
 
 ```bash
 # Standalone (no external services)
-pytest tests/ -v                          # 100 pass, 14 skip
+pytest tests/ -v                          # 241 pass, 22 skip
 
 # Skip slow torch-dependent tests
 pytest tests/ -v -k "not slow"
 
+# Alignment tests only
+pytest tests/alignment/ -v                # 79 tests, all standalone
+
 # Full suite (requires NATS running)
 nats-server &
-pytest tests/ -v                          # ~118 collected
+pytest tests/ -v
 ```
 
 | Test Suite | Tests | External Deps |
@@ -424,16 +437,25 @@ pytest tests/ -v                          # ~118 collected
 | Rewards (scorer + evaluator) | 8 | None |
 | Training (GRPO math + trainer) | 20 | torch *(optional, skips cleanly)* |
 | Inference (client + vLLM LoRA) | 15 | None *(mocked)* |
-| Workers (model reload) | 6 | None |
+| Workers (model reload + multi-env) | 18 | None |
 | Bridge (HTTP API) | 10 | None |
 | Integration (full loop) | 5 | NATS |
 | Bridge integration | 1 | NATS |
 | OPD (hint extractor + rollout builder) | 9 | None |
 | Combined training + meta-RL | 14 | torch *(optional)* |
 | Combined scorer | 7 | None |
-| Multi-env workers | 12 | None |
 | Adapter registry | 6 | None |
 | Intercept proxy | 4 | fastapi *(optional)* |
+| Skills (store + retriever + evolver) | 18 | None |
+| Tinker backend | 5 | None |
+| Training scheduler | 6 | None |
+| **Alignment (scenarios)** | **12** | **None** |
+| **Alignment (behavioral eval)** | **12** | **None** |
+| **Alignment (hackable scorer)** | **11** | **None** |
+| **Alignment (misaligned worker)** | **8** | **None** |
+| **Alignment (collusion detector)** | **16** | **None** |
+| **Alignment (audit logger)** | **9** | **None** |
+| **Alignment (experiment runner)** | **8** | **None** |
 
 ---
 
@@ -448,24 +470,72 @@ pytest tests/ -v                          # ~118 collected
 | **Phase 5** | Done | Inference abstraction, weight hot-swap, OpenRLHF integration |
 | **Phase 6** | Done | OpenClaw integration, Bridge Service, Docker Compose demo |
 | **Phase 7** | Done | ADHR — Intercept Proxy, OPD, CombinedScorer, Meta-RL, Adapter Registry |
-| **Phase 8** | In Progress | Adopt + Extend — CLI, OpenRLHF backend, OpenClaw-RL OPD, honest positioning |
-| **Phase 9** | Next | Trained PRM, DAPO graduation, HaluGate, benchmarks |
+| **Phase 8** | Done | Adopt + Extend — CLI, OpenRLHF backend, OpenClaw-RL OPD, honest positioning |
+| **Phase 9a** | Done | MetaClaw adoption — Majority Voting PRM, SkillRL, Tinker backend, Setup Wizard, Training Scheduler |
+| **Phase 9b** | Done | Alignment experiments — 6 experiments, 40 scenarios, collusion/reward-hacking detection, audit trail |
+| **Phase 9c** | Next | Trained PRM, DAPO graduation, HaluGate, CISPO, benchmarks |
 
-### Phase 8 — Adopt + Extend (Current)
+### Phase 9b — Alignment Experiments (Current)
 
 | Item | Status | Description |
 |------|--------|-------------|
-| **CLI entry point** | Done | `agentic-employees init/train/serve/status` commands |
-| **OpenRLHF backend** | Done | `Trainer` protocol adapter for Ray + vLLM + DeepSpeed training |
-| **OpenClaw-RL OPD mode** | Done | Per-token logprob extraction from vLLM teacher models |
-| **Honest README** | Done | Two-layer architecture, novel vs adopted components |
+| **Scenario library** | Done | 40 scenarios across 4 categories (deception, reward hacking, safety-pragmatism, collusion) |
+| **Behavioral eval harness** | Done | PatternBasedEvaluator + LLMJudgeEvaluator with JSON output |
+| **Hackable scorer** | Done | Deliberately weak scorer for reward hacking experiments + divergence detector |
+| **Misaligned worker** | Done | Rogue worker with 3 attack strategies (keyword stuffing, confidence inflation, shortcut) |
+| **Collusion detector** | Done | Pearson correlation + Jaccard n-gram similarity across workers |
+| **Audit logger** | Done | Full NATS event capture to JSONL via `subscribe_raw` |
+| **Experiment runner** | Done | 6 experiments with mock mode (no external deps) |
+| **Streamlit dashboard** | Done | Experiment overview, audit timeline, constitution editor |
+| **CLI integration** | Done | `agentic-employees experiment run/results` subcommands |
 | **Trained PRM model** | Next | Replace LLM-as-judge with trained process reward model |
 | **DAPO graduation** | Next | Full DAPO via OpenRLHF configuration |
 | **HaluGate scorer** | Next | Hallucination detection as complementary StepScorer |
 
 ---
 
-## Experiments
+## Alignment Experiments
+
+Enterprise-grade alignment evaluation built into the framework. 6 experiments with 40+ behavioral scenarios demonstrate that hierarchical oversight catches misalignment.
+
+```bash
+# Run all experiments (mock mode, no external deps needed)
+agentic-employees experiment run all
+
+# Run a specific experiment
+agentic-employees experiment run 2    # Reward hacking detection
+
+# View results table
+agentic-employees experiment results
+
+# Launch visual dashboard (requires: pip install -e ".[alignment]")
+streamlit run src/alignment/dashboard/app.py
+```
+
+| # | Experiment | What It Tests | Key Finding |
+|---|-----------|---------------|-------------|
+| 1 | **Alignment Before/After Meta-RL** | Does meta-RL training improve behavioral alignment? | Baseline vs post-training pass rate on deception scenarios |
+| 2 | **Reward Hacking Detection** | Can CombinedScorer catch workers gaming the reward signal? | HackableScorer + LLMJudge divergence detection |
+| 3 | **Manager Safety-Pragmatism** | Does the manager maintain safety under deadline pressure? | Safety gap between aligned and misaligned workers |
+| 4 | **Collusion Detection** | Can we detect coordinated gaming between workers? | Pearson correlation + Jaccard n-gram similarity |
+| 5 | **Audit Trail Completeness** | Is every NATS event captured for compliance? | Full JSONL audit log with compliance mapping |
+| 6 | **Dashboard Simulation** | Does the data pipeline produce well-formed dashboard inputs? | Streamlit dashboard with experiment overview + constitution editor |
+
+**Components:**
+- `src/alignment/scenarios.py` — 40 scenarios across 4 categories (deception, reward hacking, safety-pragmatism, collusion)
+- `src/alignment/behavioral_eval.py` — PatternBasedEvaluator (no LLM) + LLMJudgeEvaluator
+- `src/alignment/hackable_scorer.py` — Deliberately weak scorer that rewards keyword stuffing
+- `src/alignment/misaligned_worker.py` — Rogue worker with 3 attack strategies
+- `src/alignment/collusion_detector.py` — Cross-worker coordination detector
+- `src/alignment/audit_logger.py` — Full NATS event capture to JSONL
+- `src/alignment/runner.py` — Orchestrates all 6 experiments
+- `src/alignment/dashboard/app.py` — Streamlit dashboard
+
+See [EXPERIMENT.md](./EXPERIMENT.md) for detailed hypotheses, setup, and metrics.
+
+---
+
+## Practical Experiments
 
 Practical things you can run on the current codebase:
 
@@ -511,7 +581,8 @@ Run the same tasks with Ollama vs vLLM via the InferenceClient protocol.
 | Process Rewards | LLM-as-judge PRM | Step-level scoring (graduates to trained PRM) |
 | Intercept Proxy | [FastAPI](https://fastapi.tiangolo.com) | Transparent inference logging for OPD training data |
 | Serialization | [Pydantic v2](https://docs.pydantic.dev/) | Event type validation and JSON serialization |
-| CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://rich.readthedocs.io) | `agentic-employees init/train/serve/status` |
+| CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://rich.readthedocs.io) | `agentic-employees init/train/serve/status/experiment` |
+| Alignment | [Streamlit](https://streamlit.io) *(optional)* | Experiment dashboard with audit viewer + constitution editor |
 
 ### Key Research
 
@@ -528,6 +599,7 @@ Run the same tasks with Ollama vs vLLM via the InferenceClient protocol.
 | Document | Purpose |
 |----------|---------|
 | [PLAN.md](./PLAN.md) | Technical research & architecture bible (papers, analysis, decisions) |
+| [EXPERIMENT.md](./EXPERIMENT.md) | Alignment experiment tracking (6 experiments, hypotheses, metrics) |
 | [CLAUDE.md](./CLAUDE.md) | Project conventions for Claude Code |
 | [LEARNING.md](./LEARNING.md) | Mistake/lesson tracking log |
 | [RESEARCH-EXPERIMENT.md](./RESEARCH-EXPERIMENT.md) | Phase experiment records and findings |

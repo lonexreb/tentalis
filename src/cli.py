@@ -24,9 +24,17 @@ console = Console()
 def init(
     model: str = typer.Option("qwen2.5:1.5b", help="Base model to pull via Ollama"),
     config_dir: str = typer.Option(".", help="Directory to initialize config in"),
+    wizard: bool = typer.Option(False, help="Run interactive setup wizard"),
 ) -> None:
     """Initialize project config and pull the base model."""
     config_path = Path(config_dir)
+
+    if wizard:
+        from src.setup_wizard import SetupWizard
+
+        wiz = SetupWizard(config_dir=config_path)
+        wiz.run()
+        return
 
     # Write a default .env if it doesn't exist
     env_file = config_path / ".env"
@@ -37,6 +45,7 @@ def init(
             f"INFERENCE_BACKEND=ollama\n"
             f"TRAINER_BACKEND=standalone\n"
             f"META_RL_ENABLED=false\n"
+            f"SKILLS_ENABLED=false\n"
         )
         console.print(f"[green]Created .env[/green] at {env_file}")
     else:
@@ -80,7 +89,7 @@ def init(
 @app.command()
 def train(
     backend: str = typer.Option(
-        None, help="Training backend: 'standalone' (CPU) or 'openrlhf' (GPU)"
+        None, help="Training backend: 'standalone' (CPU), 'openrlhf' (GPU), or 'tinker' (cloud)"
     ),
     env: str = typer.Option("terminal", help="Environment type for training"),
     model: str = typer.Option(None, help="Override training model name"),
@@ -118,6 +127,16 @@ def train(
             )
             raise typer.Exit(1)
         console.print("[green]Using OpenRLHF backend (Ray + vLLM + DeepSpeed)[/green]")
+    elif effective_backend == "tinker":
+        try:
+            import tinker  # noqa: F401
+        except ImportError:
+            console.print(
+                "[red]Tinker SDK not installed.[/red] "
+                'Install with: pip install -e ".[tinker]"'
+            )
+            raise typer.Exit(1)
+        console.print("[green]Using Tinker backend (cloud-managed, no GPU required)[/green]")
     else:
         console.print("[green]Using standalone backend (CPU-testable GRPO)[/green]")
 
@@ -257,6 +276,104 @@ def _check_docker() -> tuple[str, str]:
         return "[yellow]NO CONTAINERS[/yellow]", "No running containers"
     except (FileNotFoundError, subprocess.TimeoutExpired):
         return "[red]UNAVAILABLE[/red]", "Docker not found"
+
+
+experiment_app = typer.Typer(
+    name="experiment",
+    help="Run and review alignment experiments.",
+    no_args_is_help=True,
+)
+app.add_typer(experiment_app, name="experiment")
+
+
+@experiment_app.command("run")
+def experiment_run(
+    experiment_id: str = typer.Argument(
+        ..., help="Experiment number (1-6) or 'all'"
+    ),
+    results_dir: str = typer.Option("alignment_results", help="Output directory for results"),
+) -> None:
+    """Run a specific alignment experiment or all experiments."""
+    from src.alignment.runner import ExperimentRunner
+
+    runner = ExperimentRunner(results_dir=results_dir, mock=True)
+
+    async def _run() -> None:
+        if experiment_id == "all":
+            console.print("[bold]Running all 6 alignment experiments...[/bold]")
+            results = await runner.run_all()
+            for name, data in results.items():
+                exp = data.get("experiment", name)
+                console.print(f"  [green]✓[/green] {exp}")
+            console.print(f"\n[bold green]All experiments complete.[/bold green]")
+            console.print(f"Results written to [bold]{results_dir}/[/bold]")
+        else:
+            exp_num = int(experiment_id)
+            if exp_num < 1 or exp_num > 6:
+                console.print("[red]Experiment must be 1-6 or 'all'[/red]")
+                raise typer.Exit(1)
+            console.print(f"[bold]Running experiment {exp_num}...[/bold]")
+            method = getattr(runner, f"run_experiment_{exp_num}")
+            result = await method()
+            console.print(f"[green]✓[/green] {result.get('experiment', f'exp_{exp_num}')}")
+            console.print(f"Results written to [bold]{results_dir}/[/bold]")
+
+    asyncio.run(_run())
+
+
+@experiment_app.command("results")
+def experiment_results(
+    results_dir: str = typer.Option("alignment_results", help="Results directory"),
+) -> None:
+    """Show alignment experiment results in a table."""
+    import json
+
+    results_path = Path(results_dir)
+    if not results_path.exists():
+        console.print(f"[yellow]No results directory found at {results_dir}[/yellow]")
+        console.print("Run experiments first: agentic-employees experiment run all")
+        raise typer.Exit(1)
+
+    files = sorted(results_path.glob("*.json"))
+    if not files:
+        console.print("[yellow]No result files found[/yellow]")
+        raise typer.Exit(1)
+
+    table = Table(title="Alignment Experiment Results")
+    table.add_column("Experiment", style="bold")
+    table.add_column("Key Metric")
+    table.add_column("Value")
+    table.add_column("Mock")
+
+    for f in files:
+        try:
+            data = json.loads(f.read_text())
+        except json.JSONDecodeError:
+            continue
+        exp = data.get("experiment", f.stem)
+        mock = "yes" if data.get("mock_mode", True) else "no"
+
+        # Extract key metric per experiment type
+        if "baseline_pass_rate" in data:
+            table.add_row(exp, "improvement", f"{data['improvement']:+.1%}", mock)
+        elif "divergence_metrics" in data:
+            dm = data["divergence_metrics"]
+            detected = "YES" if dm.get("detected") else "no"
+            table.add_row(exp, "hacking detected", detected, mock)
+        elif "safety_gap" in data:
+            table.add_row(exp, "safety gap", f"{data['safety_gap']:+.1%}", mock)
+        elif "collusion_detected" in data:
+            detected = "YES" if data["collusion_detected"] else "no"
+            table.add_row(exp, "collusion detected", detected, mock)
+        elif "compliance_mapping" in data:
+            n = data["compliance_mapping"]["event_types_tracked"]
+            table.add_row(exp, "event types", str(n), mock)
+        elif "dashboard_ready" in data:
+            table.add_row(exp, "dashboard ready", str(data["dashboard_ready"]), mock)
+        else:
+            table.add_row(exp, "-", "-", mock)
+
+    console.print(table)
 
 
 if __name__ == "__main__":

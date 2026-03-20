@@ -48,18 +48,31 @@ class LLMWorker(BaseWorker):
         *,
         model: str = "qwen2.5:1.5b",
         client: InferenceClient,
+        skill_retriever: object | None = None,
     ) -> None:
         super().__init__(worker_id, bus, task_types or ["coding"])
         self.model = model
         self._client = client
         self._active_version: str | None = None
+        self._skill_retriever = skill_retriever
 
     async def process(self, task: TaskEvent) -> ResultEvent:
         logger.info("LLMWorker %s calling model %s", self.worker_id, self.model)
+
+        system_prompt = SYSTEM_PROMPT
+        if self._skill_retriever is not None:
+            try:
+                skills = self._skill_retriever.retrieve(task.prompt)
+                skills_section = self._skill_retriever.format_skills_prompt(skills)
+                if skills_section:
+                    system_prompt = f"{skills_section}\n{SYSTEM_PROMPT}"
+            except Exception:
+                logger.warning("Skill retrieval failed, using default prompt", exc_info=True)
+
         raw_text = await self._client.chat(
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": task.prompt},
             ],
         )

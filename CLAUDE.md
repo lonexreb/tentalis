@@ -9,7 +9,7 @@ Two-Layer Architecture (control plane / data plane split):
 - **Training Layer** (OpenRLHF): Production GRPO/DAPO training via Ray + vLLM + DeepSpeed
 - **Control Plane**: OpenClaw (identity, memory, channels, UI)
 - **Inference**: InferenceClient protocol — Ollama (dev) or OpenAI-compatible (vLLM/Semantic Router)
-- **CLI**: `agentic-employees init|train|serve|status` (Typer + Rich)
+- **CLI**: `agentic-employees init|train|serve|status|experiment` (Typer + Rich)
 
 ## Language
 
@@ -32,6 +32,9 @@ Optional extras:
 - `pip install -e ".[vllm]"` — vLLM (GPU inference server)
 - `pip install -e ".[openrlhf]"` — OpenRLHF (production GRPO training)
 - `pip install -e ".[intercept]"` — fastapi, uvicorn, httpx (Intercept Proxy)
+- `pip install -e ".[skills]"` — sentence-transformers (SkillRL embedding retrieval)
+- `pip install -e ".[tinker]"` — Tinker SDK (cloud-managed RL training)
+- `pip install -e ".[alignment]"` — streamlit (alignment experiment dashboard)
 
 ## Directory Structure
 
@@ -69,11 +72,14 @@ src/
 │   ├── combined_trainer.py    # CombinedTrainer — merged RL + OPD distillation loss
 │   ├── meta_trainer.py        # ManagerMetaTrainer — outer-loop RL for manager feedback quality
 │   ├── loop.py                # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent, combined support)
+│   ├── scheduler.py           # TrainingScheduler — time-window gated training (buffers outside hours)
+│   ├── tinker_backend.py      # TinkerBackend — Trainer protocol adapter for Tinker cloud training
 │   ├── openrlhf_launcher.py   # OpenRLHFLauncher — subprocess launcher (legacy, kept for direct CLI usage)
 │   └── openrlhf_backend.py    # OpenRLHFBackend — Trainer protocol adapter for Ray+vLLM+DeepSpeed training
 ├── intercept/
-│   ├── __main__.py    # Entrypoint: python -m src.intercept
-│   └── proxy.py       # InterceptProxy — FastAPI proxy logging SessionEvents to NATS
+│   ├── __main__.py          # Entrypoint: python -m src.intercept
+│   ├── proxy.py             # InterceptProxy — session-stateful FastAPI proxy with skill injection
+│   └── session_manager.py   # SessionManager — tracks active sessions with conversation history
 ├── opd/
 │   ├── hint_extractor.py    # HintExtractor — feedback → OPD hint + teacher logprobs
 │   └── rollout_builder.py   # CombinedRolloutBuilder — joins RL + OPD by task_id with timeout
@@ -81,6 +87,24 @@ src/
 │   ├── __main__.py    # Entrypoint: python -m src.bridge
 │   ├── service.py     # BridgeService — connects HTTP API to NATS event bus
 │   └── http_api.py    # HTTP endpoints for OpenClaw agents (assign, result, feedback, status, health)
+├── alignment/
+│   ├── __init__.py
+│   ├── scenarios.py         # AlignmentScenario dataclass + 4 scenario sets (~40 scenarios)
+│   ├── behavioral_eval.py   # BehavioralEvaluator protocol, PatternBased + LLMJudge evaluators, harness
+│   ├── hackable_scorer.py   # HackableScorer (StepScorer) + RewardHackingDetector
+│   ├── misaligned_worker.py # MisalignedWorker (BaseWorker) — keyword stuffing/confidence/shortcut
+│   ├── collusion_detector.py # CollusionDetector — Pearson correlation + Jaccard similarity
+│   ├── audit_logger.py      # AuditLogger — subscribe_raw to all topics, write JSONL
+│   ├── runner.py            # ExperimentRunner — orchestrates all 6 experiments
+│   └── dashboard/
+│       ├── __init__.py
+│       └── app.py           # Streamlit dashboard for results + audit + constitution editor
+├── skills/
+│   ├── __init__.py
+│   ├── store.py             # SkillStore — SQLite-backed CRUD with embedding persistence
+│   ├── retriever.py         # SkillRetriever — embedding-based semantic search (SentenceTransformer)
+│   └── evolver.py           # SkillEvolver — subscribes to feedback, extracts skills via LLM
+├── setup_wizard.py          # Interactive Rich setup wizard for first-time config
 ├── services/
 │   ├── __main__.py    # Entrypoint: python -m src.services.training
 │   └── training.py    # Standalone training service (PRM Evaluator + Training Loop)
@@ -115,7 +139,9 @@ tests/
 │   ├── test_grpo.py          # GRPO advantage math + torch loss/KL tests
 │   ├── test_trainer.py       # MockTrainer + GRPOTrainer protocol/integration tests
 │   ├── test_combined_trainer.py  # CombinedTrainer RL+OPD tests
-│   └── test_meta_trainer.py      # ManagerMetaTrainer tests
+│   ├── test_meta_trainer.py      # ManagerMetaTrainer tests
+│   ├── test_tinker_backend.py    # TinkerBackend protocol conformance + mocked SDK tests
+│   └── test_scheduler.py         # TrainingScheduler time-window + buffering tests
 ├── inference/
 │   ├── test_client.py         # InferenceClient protocol + adapter tests (mocked)
 │   ├── test_vllm_lora.py      # VLLMLoRAManager tests (mocked httpx)
@@ -129,6 +155,18 @@ tests/
 │   └── test_rollout_builder.py  # CombinedRolloutBuilder join + timeout tests
 ├── intercept/
 │   └── test_proxy.py          # Intercept proxy tests (mocked backend, requires fastapi)
+├── skills/
+│   ├── test_store.py          # SkillStore CRUD + SQLite tests
+│   ├── test_retriever.py      # SkillRetriever cosine similarity + embedding retrieval tests
+│   └── test_evolver.py        # SkillEvolver feedback → skill extraction tests
+├── alignment/
+│   ├── test_scenarios.py        # Scenario validation tests (fields, uniqueness, counts)
+│   ├── test_behavioral_eval.py  # PatternBasedEvaluator, LLMJudgeEvaluator, harness tests
+│   ├── test_hackable_scorer.py  # HackableScorer + RewardHackingDetector tests
+│   ├── test_misaligned_worker.py # MisalignedWorker strategy tests
+│   ├── test_collusion_detector.py # Pearson/Jaccard/CollusionDetector tests
+│   ├── test_audit_logger.py     # AuditLogger JSONL + event detection tests
+│   └── test_runner.py           # ExperimentRunner integration tests (mock mode)
 ├── workers/
 │   ├── test_model_reload.py   # Worker model update subscription + reload tests
 │   └── test_multi_env.py      # Terminal/SWE/GUI worker tests + target_worker_id filtering
@@ -154,11 +192,11 @@ docs/
 
 - Framework: pytest + pytest-asyncio (asyncio_mode = "auto")
 - `tests/` mirrors `src/` structure (e.g., `tests/events/` tests `src/events/`)
-- Standalone (no NATS/Ollama): `tests/events/test_types.py`, `tests/rewards/`, `tests/training/`, `tests/inference/`, `tests/workers/`, `tests/bridge/test_http_api.py`, `tests/opd/`, `tests/intercept/`
+- Standalone (no NATS/Ollama): `tests/events/test_types.py`, `tests/rewards/`, `tests/training/`, `tests/inference/`, `tests/workers/`, `tests/bridge/test_http_api.py`, `tests/opd/`, `tests/intercept/`, `tests/skills/`, `tests/alignment/`
 - Requires NATS: `tests/events/test_bus.py`, `tests/test_integration.py`, `tests/bridge/test_service.py`
 - Requires optional deps: `tests/intercept/` (fastapi), `tests/bridge/test_http_api.py` (aiohttp)
 - Mock strategy: scorer/evaluator tests mock InferenceClient; bridge tests mock EventBus; OPD tests mock bus+client; integration tests use EchoWorker + mock scorer
-- Run standalone: `pytest tests/ -v --ignore=tests/bridge --ignore=tests/intercept` (100 pass, 14 skip without torch/NATS)
+- Run standalone: `pytest tests/ -v --ignore=tests/bridge --ignore=tests/intercept` (241 pass, 22 skip without torch/NATS)
 - Run standalone (skip slow torch tests): `pytest tests/training/ -v -k "not slow"`
 - Run all: `pytest tests/ -v` (with NATS running + optional deps)
 
@@ -185,6 +223,18 @@ docs/
 | META_RL_ENABLED | false | Enable manager meta-RL training |
 | META_RL_WINDOW_SIZE | 200 | Sliding window for meta-RL score tracking |
 | META_RL_MIN_FEEDBACK | 200 | Min feedback events before meta-training |
+| PRM_NUM_VOTES | 3 | Number of parallel LLM judge evaluations (majority voting) |
+| SKILLS_ENABLED | false | Enable SkillRL skill injection |
+| SKILLS_DIR | skills_data | Directory for skill SQLite database |
+| SKILL_EVOLUTION_THRESHOLD | 0.4 | Score threshold below which skills are extracted |
+| SKILL_RETRIEVAL_TOP_K | 3 | Number of skills to inject per task |
+| TINKER_API_KEY | (empty) | API key for Tinker cloud training |
+| TINKER_BASE_URL | https://api.tinker.thinkingmachines.ai | Tinker API base URL |
+| TRAINING_SCHEDULE_ENABLED | false | Enable time-window gated training |
+| TRAINING_SCHEDULE_HOURS | 02:00-06:00 | UTC training window (HH:MM-HH:MM) |
+| ALIGNMENT_ENABLED | false | Enable alignment experiment infrastructure |
+| ALIGNMENT_RESULTS_DIR | alignment_results | Directory for experiment result JSON files |
+| ALIGNMENT_AUDIT_ALL | false | Enable full NATS event audit logging |
 
 ## Commit Format
 
@@ -220,10 +270,31 @@ Previous phases:
 - Phase 2: Event loop, Manager/Worker agents, EchoWorker
 - Phase 1: Scaffolding, docs, git
 
-**Phase 9 (next):** Trained PRM model, DAPO graduation, HaluGate scorer, benchmarks.
+Phase 9a (complete — MetaClaw adoption):
+- Majority Voting PRM (`src/rewards/scorer.py`) — parallel LLM judge evals with median aggregation
+- SkillRL (`src/skills/`) — skill store, embedding retriever, evolver from feedback, skill injection in workers/proxy
+- Tinker training backend (`src/training/tinker_backend.py`) — cloud-managed RL via Tinker SDK
+- Interactive setup wizard (`src/setup_wizard.py`) — Rich multi-step config wizard
+- Session-stateful intercept proxy (`src/intercept/session_manager.py`) — session tracking + skill injection
+- Training scheduler (`src/training/scheduler.py`) — time-window gated training
+
+Phase 9b (complete — Alignment experiments):
+- Alignment scenario library (`src/alignment/scenarios.py`) — 40 scenarios across 4 categories
+- Behavioral eval harness (`src/alignment/behavioral_eval.py`) — PatternBased + LLMJudge evaluators
+- Hackable scorer (`src/alignment/hackable_scorer.py`) — deliberately weak scorer + divergence detector
+- Misaligned worker (`src/alignment/misaligned_worker.py`) — keyword stuffing, confidence inflation, shortcut
+- Collusion detector (`src/alignment/collusion_detector.py`) — Pearson + Jaccard cross-worker analysis
+- Audit logger (`src/alignment/audit_logger.py`) — full NATS event capture to JSONL
+- Experiment runner (`src/alignment/runner.py`) — 6 experiments (mock-mode, standalone)
+- Streamlit dashboard (`src/alignment/dashboard/app.py`) — results viewer + constitution editor
+- CLI `experiment` subcommand — `agentic-employees experiment run|results`
+- `AlignmentEvalEvent` + `AuditLogEvent` event types, `subscribe_raw` on EventBus
+
+**Phase 9c (next):** Trained PRM model, DAPO graduation, HaluGate scorer, CISPO contrastive loss, benchmarks.
 
 ## Key Documents
 
+- [EXPERIMENT.md](./EXPERIMENT.md) — Alignment experiment tracking (6 experiments, hypotheses, metrics)
 - [PLAN.md](./PLAN.md) — Full technical research & architecture bible (papers, analysis, decisions)
 - [LEARNING.md](./LEARNING.md) — Mistake/lesson tracking for autonomous decisions
 - [RESEARCH-EXPERIMENT.md](./RESEARCH-EXPERIMENT.md) — Phase experiment records and findings
