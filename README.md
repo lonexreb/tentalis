@@ -81,7 +81,7 @@ tentalis experiment results            # View experiment results
 
 ### Via Docker Compose
 ```bash
-git clone https://github.com/lonexreb/Tentalis.git
+git clone https://github.com/lonexreb/tentalis.git
 cd Tentalis
 ./scripts/demo.sh
 # Open http://localhost:3000 — message the Manager agent
