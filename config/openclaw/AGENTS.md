@@ -1,6 +1,6 @@
 # Agent Registry
 
-Two agents operate in the agentic-employees system:
+Two agents operate in the Tentalis system:
 
 ## manager-01
 

@@ -1,7 +1,7 @@
 <div align="center">
-<img src="assets/banner.svg" alt="agentic-employees banner" width="960">
+<img src="assets/banner.svg" alt="Tentalis banner" width="960">
 
-# agentic-employees
+# Tentalis
 
 **ADHR meta-RL framework built on top of OpenRLHF/OpenClaw-RL — agents that learn from manager feedback.**
 
@@ -12,7 +12,7 @@
 [![NATS](https://img.shields.io/badge/Orchestration-NATS-27AAE1?logo=natsdotio&logoColor=white)](https://nats.io)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 
-[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Alignment Experiments](#alignment-experiments) | [Novel Contributions](#novel-contributions) | [Why agentic-employees?](#why-agentic-employees) | [Roadmap](#roadmap)
+[Architecture](#architecture) | [Quick Start](#quick-start) | [Features](#features) | [Alignment Experiments](#alignment-experiments) | [Novel Contributions](#novel-contributions) | [Why Tentalis?](#why-Tentalis) | [Roadmap](#roadmap)
 
 </div>
 
@@ -22,7 +22,7 @@
 
 Most AI agent frameworks are **fire-and-forget** — agents complete tasks but never learn from their mistakes. And most RL training frameworks are **training-only** — they produce better models but don't handle multi-agent orchestration, live scoring, or continuous deployment.
 
-**agentic-employees** bridges both worlds:
+**Tentalis** bridges both worlds:
 - **Orchestration layer** (NATS): Agent coordination, task routing, manager feedback loops
 - **Training layer** (OpenRLHF): Production-grade GRPO/DAPO training with Ray + vLLM + DeepSpeed
 - **Novel meta-RL layer** (ours): Manager trains too, environment-aware scoring, per-worker adaptation
@@ -70,19 +70,19 @@ User --> OpenClaw Web UI (:3000)
 ### Via CLI (recommended)
 ```bash
 pip install -e "."
-agentic-employees init                          # Set up config, pull model
-agentic-employees serve --docker                # Start all services
-agentic-employees status                        # Check everything is running
-agentic-employees train --backend standalone    # CPU training (dev)
-agentic-employees train --backend openrlhf      # GPU training (production)
-agentic-employees experiment run all            # Run alignment experiments
-agentic-employees experiment results            # View experiment results
+tentalis init                          # Set up config, pull model
+tentalis serve --docker                # Start all services
+tentalis status                        # Check everything is running
+tentalis train --backend standalone    # CPU training (dev)
+tentalis train --backend openrlhf      # GPU training (production)
+tentalis experiment run all            # Run alignment experiments
+tentalis experiment results            # View experiment results
 ```
 
 ### Via Docker Compose
 ```bash
-git clone https://github.com/lonexreb/agentic-employees.git
-cd agentic-employees
+git clone https://github.com/lonexreb/Tentalis.git
+cd Tentalis
 ./scripts/demo.sh
 # Open http://localhost:3000 — message the Manager agent
 ```
@@ -118,7 +118,7 @@ docker compose exec ollama ollama pull qwen2.5:1.5b
 
 ## Novel Contributions
 
-These are the components that differentiate agentic-employees from existing frameworks. Everything else (GRPO math, OPD extraction, rollout collection) is better done by OpenRLHF/veRL — and we adopt them via the `OpenRLHFBackend`.
+These are the components that differentiate Tentalis from existing frameworks. Everything else (GRPO math, OPD extraction, rollout collection) is better done by OpenRLHF/veRL — and we adopt them via the `OpenRLHFBackend`.
 
 | Contribution | What's Novel | Where |
 |---|---|---|
@@ -224,15 +224,15 @@ Agents that review contracts, flag risky clauses, and summarize terms. Each anal
 
 ---
 
-## Why agentic-employees?
+## Why Tentalis?
 
 ### The Core Difference: Agents That Improve Their Own Weights
 
-Most agent frameworks are **orchestration layers** — they arrange LLM calls, manage memory, and coordinate tools. But the underlying model never gets better from usage. agentic-employees is fundamentally different: **every task produces a training signal, and that signal updates the model weights**.
+Most agent frameworks are **orchestration layers** — they arrange LLM calls, manage memory, and coordinate tools. But the underlying model never gets better from usage. Tentalis is fundamentally different: **every task produces a training signal, and that signal updates the model weights**.
 
 ### Competitive Comparison
 
-| Capability | agentic-employees | OpenClaw-RL | OpenClaw (standalone) | CrewAI | LangGraph | AutoGPT | AutoGen | Perplexity Computer | Devin |
+| Capability | Tentalis | OpenClaw-RL | OpenClaw (standalone) | CrewAI | LangGraph | AutoGPT | AutoGen | Perplexity Computer | Devin |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
 | **RL training loop** | GRPO | PPO + OPD | No | No | No | No | No | No | Yes (internal) |
 | **Step-level PRM scoring** | **Yes** | Turn-level | No | No | No | No | No | No | Partial |
@@ -246,19 +246,19 @@ Most agent frameworks are **orchestration layers** — they arrange LLM calls, m
 | **Hindsight distillation (OPD)** | **Yes** | **Yes** | No | No | No | No | No | No | No |
 | **Implicit signal extraction** | Partial | **Yes** | No | No | No | No | No | No | Partial |
 
-### agentic-employees vs OpenClaw-RL (The Closest Open-Source Competitor)
+### Tentalis vs OpenClaw-RL (The Closest Open-Source Competitor)
 
 [OpenClaw-RL](https://github.com/Gen-Verse/OpenClaw-RL) (Princeton AI Lab / Gen-Verse, [arXiv:2603.10165](https://arxiv.org/abs/2603.10165)) is the only other open-source project that trains agent model weights from live interactions. It wraps a self-hosted model inside OpenClaw and runs 4 async loops: serving (SGLang), rollout collection, PRM judging, and policy training (Megatron-LM). It introduces **On-Policy Distillation (OPD)** — a genuinely novel technique where hindsight hints from user/tool feedback are converted into **token-level** training advantages.
 
 **Where OpenClaw-RL wins:**
 
-- **On-Policy Distillation (OPD)** — extracts actionable hints from the next-state (user reply, tool error, etc.) and computes per-token log-probability gaps as directional training signal. Their results: OPD alone reaches 0.72 accuracy at 16 steps vs Binary RL's 0.23. agentic-employees currently has scalar scoring only.
-- **Implicit signal extraction** — automatically converts user re-queries, tool failures, and corrections into training data with zero manual labeling. agentic-employees requires the manager agent to explicitly score.
+- **On-Policy Distillation (OPD)** — extracts actionable hints from the next-state (user reply, tool error, etc.) and computes per-token log-probability gaps as directional training signal. Their results: OPD alone reaches 0.72 accuracy at 16 steps vs Binary RL's 0.23. Tentalis currently has scalar scoring only.
+- **Implicit signal extraction** — automatically converts user re-queries, tool failures, and corrections into training data with zero manual labeling. Tentalis requires the manager agent to explicitly score.
 - **Majority voting** — runs `m` parallel judge calls per turn and takes majority vote for more reliable scoring.
 
-**Where agentic-employees wins:**
+**Where Tentalis wins:**
 
-| Aspect | agentic-employees | OpenClaw-RL |
+| Aspect | Tentalis | OpenClaw-RL |
 |--------|-------------------|-------------|
 | **Architecture** | Event-driven (NATS pub/sub) — fault-tolerant, horizontally scalable | In-process async loops — if one crashes, everything goes down |
 | **Hardware** | CPU-testable, single GPU for training | 8x H100-class GPUs minimum |
@@ -270,13 +270,13 @@ Most agent frameworks are **orchestration layers** — they arrange LLM calls, m
 | **Python version** | 3.10+ | 3.12 (CUDA 12.9) |
 | **Maturity** | 7 phases complete, 100+ tests | Released 3 days ago, no test suite |
 
-**Bottom line:** OpenClaw-RL pioneered OPD, and agentic-employees has now adopted it — combining OPD distillation with GRPO in a CombinedTrainer, plus environment-aware scoring and meta-RL for the manager. agentic-employees has better **production architecture** (event-driven, horizontally scalable, fault-tolerant, CPU-testable) while now matching OpenClaw-RL's signal richness.
+**Bottom line:** OpenClaw-RL pioneered OPD, and Tentalis has now adopted it — combining OPD distillation with GRPO in a CombinedTrainer, plus environment-aware scoring and meta-RL for the manager. Tentalis has better **production architecture** (event-driven, horizontally scalable, fault-tolerant, CPU-testable) while now matching OpenClaw-RL's signal richness.
 
 ### Why Not Just Use OpenClaw?
 
-OpenClaw is an excellent agent runtime — identity, memory, web UI, multi-platform channels. agentic-employees **uses** OpenClaw for exactly those strengths. But OpenClaw alone is a **static system**: agents adapt through memory files and prompt updates, but model weights never change.
+OpenClaw is an excellent agent runtime — identity, memory, web UI, multi-platform channels. Tentalis **uses** OpenClaw for exactly those strengths. But OpenClaw alone is a **static system**: agents adapt through memory files and prompt updates, but model weights never change.
 
-| Aspect | OpenClaw Alone | OpenClaw + agentic-employees |
+| Aspect | OpenClaw Alone | OpenClaw + Tentalis |
 |--------|----------------|------------------------------|
 | Agent memory | Markdown files, semantic search | Same (OpenClaw handles this) |
 | Learning mechanism | RAG over past conversations | **RL training on scored reasoning steps** |
@@ -286,7 +286,7 @@ OpenClaw is an excellent agent runtime — identity, memory, web UI, multi-platf
 | Evaluation | No built-in evaluation | **PRM scores every reasoning step** (0-1 per step) |
 | Training infrastructure | None | **GRPO + LoRA**, graduates to DAPO + OpenRLHF |
 
-**Bottom line:** OpenClaw gives agents identity and memory. agentic-employees gives them the ability to **actually get smarter**.
+**Bottom line:** OpenClaw gives agents identity and memory. Tentalis gives them the ability to **actually get smarter**.
 
 ### Why Not CrewAI / LangGraph / AutoGen?
 
@@ -298,7 +298,7 @@ These frameworks coordinate agents through role assignments, graph workflows, or
 - **MetaGPT** follows static SOPs. No feedback loop, no learning.
 - **AutoGPT** has in-session self-critique, but nothing persists to model weights between runs.
 
-**None of these modify the underlying model.** The agent's 100th task runs on the exact same model weights as its 1st task. Only agentic-employees and OpenClaw-RL actually train model weights from agent interactions — and agentic-employees is the only one that does it with production-grade event-driven architecture, multi-agent coordination, and without requiring 8 GPUs.
+**None of these modify the underlying model.** The agent's 100th task runs on the exact same model weights as its 1st task. Only Tentalis and OpenClaw-RL actually train model weights from agent interactions — and Tentalis is the only one that does it with production-grade event-driven architecture, multi-agent coordination, and without requiring 8 GPUs.
 
 ### Why Not Perplexity Computer?
 
@@ -320,7 +320,7 @@ Devin (Cognition) is the closest competitor in terms of **actually training mode
 - **Pricing** — enterprise pricing, not accessible for smaller teams or research
 - **No bring-your-own-model** — locked to Cognition's SWE-1 model family
 
-agentic-employees gives you Devin's continuous learning architecture as an **open-source, self-hosted, domain-agnostic** system where you control the model, the scoring, and the training.
+Tentalis gives you Devin's continuous learning architecture as an **open-source, self-hosted, domain-agnostic** system where you control the model, the scoring, and the training.
 
 ---
 
@@ -347,11 +347,11 @@ python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 
 # CLI (recommended way to interact)
-agentic-employees init                          # Set up config, pull model
-agentic-employees status                        # Check service health
-agentic-employees train --backend standalone    # CPU training
-agentic-employees serve                         # Start demo loop
-agentic-employees experiment run all            # Run alignment experiments
+tentalis init                          # Set up config, pull model
+tentalis status                        # Check service health
+tentalis train --backend standalone    # CPU training
+tentalis serve                         # Start demo loop
+tentalis experiment run all            # Run alignment experiments
 
 # Run tests (241 pass standalone, no NATS/Ollama needed)
 pytest tests/ -v
@@ -487,7 +487,7 @@ pytest tests/ -v
 | **Audit logger** | Done | Full NATS event capture to JSONL via `subscribe_raw` |
 | **Experiment runner** | Done | 6 experiments with mock mode (no external deps) |
 | **Streamlit dashboard** | Done | Experiment overview, audit timeline, constitution editor |
-| **CLI integration** | Done | `agentic-employees experiment run/results` subcommands |
+| **CLI integration** | Done | `tentalis experiment run/results` subcommands |
 | **Trained PRM model** | Next | Replace LLM-as-judge with trained process reward model |
 | **DAPO graduation** | Next | Full DAPO via OpenRLHF configuration |
 | **HaluGate scorer** | Next | Hallucination detection as complementary StepScorer |
@@ -500,13 +500,13 @@ Enterprise-grade alignment evaluation built into the framework. 6 experiments wi
 
 ```bash
 # Run all experiments (mock mode, no external deps needed)
-agentic-employees experiment run all
+tentalis experiment run all
 
 # Run a specific experiment
-agentic-employees experiment run 2    # Reward hacking detection
+tentalis experiment run 2    # Reward hacking detection
 
 # View results table
-agentic-employees experiment results
+tentalis experiment results
 
 # Launch visual dashboard (requires: pip install -e ".[alignment]")
 streamlit run src/alignment/dashboard/app.py
@@ -581,7 +581,7 @@ Run the same tasks with Ollama vs vLLM via the InferenceClient protocol.
 | Process Rewards | LLM-as-judge PRM | Step-level scoring (graduates to trained PRM) |
 | Intercept Proxy | [FastAPI](https://fastapi.tiangolo.com) | Transparent inference logging for OPD training data |
 | Serialization | [Pydantic v2](https://docs.pydantic.dev/) | Event type validation and JSON serialization |
-| CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://rich.readthedocs.io) | `agentic-employees init/train/serve/status/experiment` |
+| CLI | [Typer](https://typer.tiangolo.com) + [Rich](https://rich.readthedocs.io) | `tentalis init/train/serve/status/experiment` |
 | Alignment | [Streamlit](https://streamlit.io) *(optional)* | Experiment dashboard with audit viewer + constitution editor |
 
 ### Key Research

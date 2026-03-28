@@ -1,7 +1,7 @@
 [project]
-name = "agentic-employees"
+name = "tentalis"
 version = "0.1.0"
-description = "Event-driven agentic employees with RL-based self-improvement"
+description = "Event-driven agentic framework with RL-based self-improvement"
 requires-python = ">=3.10"
 dependencies = [
     "nats-py>=2.9.0",
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-agentic-employees = "src.cli:app"
+tentalis = "src.cli:app"
 
 [project.optional-dependencies]
 dev = [

@@ -23,7 +23,7 @@ class SetupWizard:
     def run(self) -> dict[str, str]:
         console.print(
             Panel(
-                "[bold]Welcome to agentic-employees setup wizard[/bold]\n"
+                "[bold]Welcome to Tentalis setup wizard[/bold]\n"
                 "This will guide you through configuring your ADHR framework.",
                 title="Setup Wizard",
             )

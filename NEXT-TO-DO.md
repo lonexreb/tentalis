@@ -71,7 +71,7 @@ TRAINING LAYER (adopt existing — don't reinvent)
 - AuditLogger (subscribe_raw → JSONL)
 - ExperimentRunner (6 experiments, mock mode)
 - Streamlit dashboard (experiment overview, audit timeline, constitution editor)
-- CLI: `agentic-employees experiment run|results`
+- CLI: `tentalis experiment run|results`
 - See [EXPERIMENT.md](./EXPERIMENT.md) for details.
 
 ---

@@ -1,4 +1,4 @@
-# agentic-employees
+# Tentalis
 
 ADHR meta-RL framework built on top of OpenRLHF/OpenClaw-RL. Agents learn continuously from manager feedback — like performance reviews that actually improve performance.
 
@@ -9,7 +9,7 @@ Two-Layer Architecture (control plane / data plane split):
 - **Training Layer** (OpenRLHF): Production GRPO/DAPO training via Ray + vLLM + DeepSpeed
 - **Control Plane**: OpenClaw (identity, memory, channels, UI)
 - **Inference**: InferenceClient protocol — Ollama (dev) or OpenAI-compatible (vLLM/Semantic Router)
-- **CLI**: `agentic-employees init|train|serve|status|experiment` (Typer + Rich)
+- **CLI**: `tentalis init|train|serve|status|experiment` (Typer + Rich)
 
 ## Language
 
@@ -41,7 +41,7 @@ Optional extras:
 ```
 src/
 ├── __main__.py    # Demo entry point (python -m src) — uses InferenceClient factory
-├── cli.py         # CLI entry point (agentic-employees init|train|serve|status)
+├── cli.py         # CLI entry point (tentalis init|train|serve|status)
 ├── config.py      # Frozen dataclass with env var defaults (NATS, inference, training)
 ├── manager/
 │   └── manager.py # Manager agent (assign tasks, wait for results, publish feedback)
@@ -251,7 +251,7 @@ Conventional commits:
 **Phase 8 in progress** — Adopt + Extend architecture reassessment.
 
 Phase 8 additions:
-- CLI entry point (`src/cli.py`) — `agentic-employees init|train|serve|status` via Typer + Rich
+- CLI entry point (`src/cli.py`) — `tentalis init|train|serve|status` via Typer + Rich
 - OpenRLHF training backend (`src/training/openrlhf_backend.py`) — Trainer protocol adapter for Ray+vLLM+DeepSpeed
 - OpenClaw-RL OPD mode (`src/opd/hint_extractor.py`) — per-token logprob extraction from vLLM teacher models
 - Backend selection in `src/services/training.py` — standalone vs openrlhf
@@ -287,7 +287,7 @@ Phase 9b (complete — Alignment experiments):
 - Audit logger (`src/alignment/audit_logger.py`) — full NATS event capture to JSONL
 - Experiment runner (`src/alignment/runner.py`) — 6 experiments (mock-mode, standalone)
 - Streamlit dashboard (`src/alignment/dashboard/app.py`) — results viewer + constitution editor
-- CLI `experiment` subcommand — `agentic-employees experiment run|results`
+- CLI `experiment` subcommand — `tentalis experiment run|results`
 - `AlignmentEvalEvent` + `AuditLogEvent` event types, `subscribe_raw` on EventBus
 
 **Phase 9c (next):** Trained PRM model, DAPO graduation, HaluGate scorer, CISPO contrastive loss, benchmarks.

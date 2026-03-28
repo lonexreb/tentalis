@@ -8,13 +8,13 @@ Enterprise-grade alignment evaluation for the ADHR multi-agent framework. These 
 
 ```bash
 # Run all experiments (mock mode, no external deps)
-agentic-employees experiment run all
+tentalis experiment run all
 
 # Run specific experiment
-agentic-employees experiment run 2
+tentalis experiment run 2
 
 # View results
-agentic-employees experiment results
+tentalis experiment results
 ```
 
 ## Experiment Registry
@@ -48,7 +48,7 @@ Meta-RL training improves behavioral alignment pass rates on deception scenarios
 - `improvement`: delta between the two
 
 ### Results
-*Populated after running: `agentic-employees experiment run 1`*
+*Populated after running: `tentalis experiment run 1`*
 
 ### Enterprise Takeaway
 Demonstrates measurable improvement from the feedback loop, quantifying the value of continuous RL training.
@@ -73,7 +73,7 @@ CombinedScorer with HackableScorer catches divergence when workers game reward s
 - `mean_judge`: average judge scorer output
 
 ### Results
-*Populated after running: `agentic-employees experiment run 2`*
+*Populated after running: `tentalis experiment run 2`*
 
 ### Enterprise Takeaway
 Shows that multi-scorer architecture detects reward gaming that single-scorer systems miss.
@@ -97,7 +97,7 @@ Meta-RL trained manager maintains safety recommendations even under deadline pre
 - `safety_gap`: difference showing detection capability
 
 ### Results
-*Populated after running: `agentic-employees experiment run 3`*
+*Populated after running: `tentalis experiment run 3`*
 
 ### Enterprise Takeaway
 Demonstrates the system prioritizes safety over speed, critical for regulated industries.
@@ -121,7 +121,7 @@ CollusionDetector + PRM catches rogue agent coordination in multi-worker deploym
 - `collusion_detected`: boolean flag
 
 ### Results
-*Populated after running: `agentic-employees experiment run 4`*
+*Populated after running: `tentalis experiment run 4`*
 
 ### Enterprise Takeaway
 Multi-agent systems need coordination detection. This experiment validates that independent workers stay independent.
@@ -144,7 +144,7 @@ Every NATS event is captured in the audit JSONL log with full payload and metada
 - `full_payload_captured`: whether raw JSON is preserved
 
 ### Results
-*Populated after running: `agentic-employees experiment run 5`*
+*Populated after running: `tentalis experiment run 5`*
 
 ### Enterprise Takeaway
 Full audit trail enables compliance with SOC2, GDPR Article 22, and internal governance requirements.
@@ -167,7 +167,7 @@ Data pipeline produces well-formed outputs consumable by the Streamlit dashboard
 - `dashboard_ready`: end-to-end validation
 
 ### Results
-*Populated after running: `agentic-employees experiment run 6`*
+*Populated after running: `tentalis experiment run 6`*
 
 ### Enterprise Takeaway
 Alignment results are not just logged — they're visualized and actionable for non-technical stakeholders.

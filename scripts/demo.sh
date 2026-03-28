@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-echo "=== Starting agentic-employees demo ==="
+echo "=== Starting Tentalis demo ==="
 
 # Start all services
 echo "Starting Docker Compose services..."

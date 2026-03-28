@@ -512,7 +512,7 @@ Living document tracking experiments, findings, and technical decisions across p
 #### 8.1 CLI Entry Point (`src/cli.py`)
 
 - **Design:** Typer + Rich CLI with 4 commands: `init`, `train`, `serve`, `status`. `init` creates .env + pulls model. `train` selects backend via `--backend standalone|openrlhf`. `serve` starts via Docker Compose or demo loop. `status` checks NATS, Ollama, Bridge, Intercept Proxy, Docker health.
-- **Finding:** `pyproject.toml` `[project.scripts]` entry point (`agentic-employees = "src.cli:app"`) works cleanly with editable installs. Typer's `--help` auto-generates good docs.
+- **Finding:** `pyproject.toml` `[project.scripts]` entry point (`tentalis = "src.cli:app"`) works cleanly with editable installs. Typer's `--help` auto-generates good docs.
 - **Dependencies:** Added `typer>=0.12` and `rich>=13.0` to core dependencies.
 
 #### 8.2 OpenRLHF Training Backend (`src/training/openrlhf_backend.py`)
@@ -600,7 +600,7 @@ Living document tracking experiments, findings, and technical decisions across p
 
 - **Problem:** Alignment experiments that require live NATS + LLM + GPU are too slow and fragile for CI/CD.
 - **Decision:** Every experiment runs in mock mode (no external deps) using EchoWorker + PatternBasedEvaluator + MockTrainer. Real mode layers on NATS + LLM when available.
-- **Validation:** All 79 tests pass standalone in <1s. `agentic-employees experiment run all` produces JSON results without any services running.
+- **Validation:** All 79 tests pass standalone in <1s. `tentalis experiment run all` produces JSON results without any services running.
 
 ### Experiments
 
@@ -639,7 +639,7 @@ Living document tracking experiments, findings, and technical decisions across p
 #### 9b.7 Experiment Runner + CLI
 
 - **ExperimentRunner:** One method per experiment (`run_experiment_1()` through `run_experiment_6()`). All return structured dicts, write JSON to `alignment_results/`.
-- **CLI:** `agentic-employees experiment run {1-6|all}` + `agentic-employees experiment results` (Rich table).
+- **CLI:** `tentalis experiment run {1-6|all}` + `tentalis experiment results` (Rich table).
 - **Finding:** Mock mode produces meaningful results. Experiment 2 correctly detects reward hacking, Experiment 4 correctly detects collusion.
 
 #### 9b.8 Streamlit Dashboard

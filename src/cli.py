@@ -1,4 +1,4 @@
-"""CLI entry point: agentic-employees init|train|serve|status."""
+"""CLI entry point: tentalis init|train|serve|status."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from rich.console import Console
 from rich.table import Table
 
 app = typer.Typer(
-    name="agentic-employees",
+    name="tentalis",
     help="ADHR meta-RL framework — agents that learn from manager feedback.",
     no_args_is_help=True,
 )
@@ -82,8 +82,8 @@ def init(
 
     console.print("\n[bold green]Initialization complete.[/bold green]")
     console.print("Next steps:")
-    console.print("  agentic-employees serve     # Start NATS + workers")
-    console.print("  agentic-employees train     # Start training loop")
+    console.print("  tentalis serve     # Start NATS + workers")
+    console.print("  tentalis train     # Start training loop")
 
 
 @app.command()
@@ -179,7 +179,7 @@ def serve(
 @app.command()
 def status() -> None:
     """Show status of all services."""
-    table = Table(title="agentic-employees Service Status")
+    table = Table(title="Tentalis Service Status")
     table.add_column("Service", style="bold")
     table.add_column("Status")
     table.add_column("Details")
@@ -331,7 +331,7 @@ def experiment_results(
     results_path = Path(results_dir)
     if not results_path.exists():
         console.print(f"[yellow]No results directory found at {results_dir}[/yellow]")
-        console.print("Run experiments first: agentic-employees experiment run all")
+        console.print("Run experiments first: tentalis experiment run all")
         raise typer.Exit(1)
 
     files = sorted(results_path.glob("*.json"))
