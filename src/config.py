@@ -65,3 +65,23 @@ class Config:
     alignment_enabled: bool = os.environ.get("ALIGNMENT_ENABLED", "false").lower() == "true"
     alignment_results_dir: str = os.environ.get("ALIGNMENT_RESULTS_DIR", "alignment_results")
     alignment_audit_all: bool = os.environ.get("ALIGNMENT_AUDIT_ALL", "false").lower() == "true"
+    # Trajectory store (Phase 9c)
+    trajectory_store_enabled: bool = os.environ.get("TRAJECTORY_STORE_ENABLED", "false").lower() == "true"
+    trajectory_store_path: str = os.environ.get("TRAJECTORY_STORE_PATH", "trajectory_data/trajectories.db")
+    # HaluGate scorer (Phase 9c)
+    halugate_enabled: bool = os.environ.get("HALUGATE_ENABLED", "false").lower() == "true"
+    halugate_model: str = os.environ.get("HALUGATE_MODEL", "qwen2.5:1.5b")
+    # CISPO contrastive loss (Phase 9c)
+    cispo_enabled: bool = os.environ.get("CISPO_ENABLED", "false").lower() == "true"
+    cispo_weight: float = float(os.environ.get("CISPO_WEIGHT", "0.2"))
+    cispo_margin: float = float(os.environ.get("CISPO_MARGIN", "0.5"))
+    # DAPO (Phase 9c)
+    dapo_entropy_beta: float = float(os.environ.get("DAPO_ENTROPY_BETA", "0.01"))
+    dapo_min_reward_threshold: float = float(os.environ.get("DAPO_MIN_REWARD_THRESHOLD", "0.1"))
+    # Trained PRM (Phase 9c)
+    trained_prm_enabled: bool = os.environ.get("TRAINED_PRM_ENABLED", "false").lower() == "true"
+    trained_prm_model: str = os.environ.get("TRAINED_PRM_MODEL", "Qwen/Qwen2.5-0.5B")
+    trained_prm_checkpoint: str = os.environ.get("TRAINED_PRM_CHECKPOINT", "")
+    # Benchmarks (Phase 9c)
+    benchmark_dataset_dir: str = os.environ.get("BENCHMARK_DATASET_DIR", "benchmark_data")
+    benchmark_results_dir: str = os.environ.get("BENCHMARK_RESULTS_DIR", "benchmark_results")

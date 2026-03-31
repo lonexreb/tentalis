@@ -376,5 +376,102 @@ def experiment_results(
     console.print(table)
 
 
+benchmark_app = typer.Typer(
+    name="benchmark",
+    help="Run reproducible benchmarks (GSM8K, MATH, HumanEval).",
+    no_args_is_help=True,
+)
+app.add_typer(benchmark_app, name="benchmark")
+
+
+@benchmark_app.command("run")
+def benchmark_run(
+    dataset: str = typer.Option("all", help="Dataset: gsm8k, math, humaneval, all"),
+    model: str = typer.Option("", help="Model to benchmark"),
+    limit: int = typer.Option(0, help="Limit examples (0 = all)"),
+    results_dir: str = typer.Option("benchmark_results", help="Output directory"),
+    dataset_dir: str = typer.Option("benchmark_data", help="Dataset directory"),
+) -> None:
+    """Run benchmarks on selected datasets."""
+    from src.config import Config
+    from src.inference.client import create_client
+
+    cfg = Config()
+    client = create_client(
+        backend=cfg.inference_backend,
+        base_url=cfg.inference_base_url or cfg.ollama_host,
+        api_key=cfg.inference_api_key,
+    )
+
+    effective_model = model or cfg.llm_model
+    effective_limit = limit if limit > 0 else None
+
+    from src.benchmarks.runner import BenchmarkRunner
+
+    runner = BenchmarkRunner(
+        client=client, model=effective_model,
+        results_dir=results_dir, dataset_dir=dataset_dir,
+    )
+
+    async def _run() -> None:
+        if dataset == "all":
+            console.print(f"[bold]Running all benchmarks (model={effective_model})...[/bold]")
+            results = await runner.run_all(limit=effective_limit)
+            for name, result in results.items():
+                console.print(
+                    f"  [green]{name}[/green]: {result.correct}/{result.total} "
+                    f"({result.accuracy:.1%})"
+                )
+        else:
+            console.print(f"[bold]Running {dataset} benchmark (model={effective_model})...[/bold]")
+            result = await runner.run_dataset(dataset, limit=effective_limit)
+            console.print(
+                f"  [green]{dataset}[/green]: {result.correct}/{result.total} "
+                f"({result.accuracy:.1%})"
+            )
+        console.print(f"\nResults written to [bold]{results_dir}/[/bold]")
+
+    asyncio.run(_run())
+
+
+@benchmark_app.command("results")
+def benchmark_results(
+    results_dir: str = typer.Option("benchmark_results", help="Results directory"),
+) -> None:
+    """Show benchmark results in a table."""
+    import json
+
+    results_path = Path(results_dir)
+    if not results_path.exists():
+        console.print(f"[yellow]No results directory found at {results_dir}[/yellow]")
+        raise typer.Exit(1)
+
+    files = sorted(results_path.glob("benchmark_*.json"))
+    if not files:
+        console.print("[yellow]No benchmark results found[/yellow]")
+        raise typer.Exit(1)
+
+    # Show latest results
+    latest = files[-1]
+    data = json.loads(latest.read_text())
+
+    table = Table(title=f"Benchmark Results ({latest.name})")
+    table.add_column("Dataset", style="bold")
+    table.add_column("Correct")
+    table.add_column("Total")
+    table.add_column("Accuracy")
+
+    for name, result in data.items():
+        acc = result.get("accuracy", 0)
+        table.add_row(
+            name,
+            str(result.get("correct", 0)),
+            str(result.get("total", 0)),
+            f"{acc:.1%}",
+        )
+
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()

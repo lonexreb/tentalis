@@ -71,3 +71,18 @@ def combined_loss(
 ) -> "torch.Tensor":
     """Combine RL clipped surrogate loss with OPD distillation loss."""
     return w_rl * rl_loss + w_opd * opd_loss
+
+
+def multi_loss(
+    losses: dict[str, "torch.Tensor"],
+    weights: dict[str, float],
+) -> "torch.Tensor":
+    """Weighted combination of multiple named loss terms."""
+    import torch
+
+    total = torch.tensor(0.0)
+    for name, loss in losses.items():
+        w = weights.get(name, 0.0)
+        if w > 0:
+            total = total + w * loss
+    return total

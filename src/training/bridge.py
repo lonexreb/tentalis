@@ -46,11 +46,13 @@ class NATSTrainingBridge:
         ],
         *,
         save_path: Path | None = None,
+        trajectory_store: "TrajectoryStore | None" = None,
     ) -> None:
         self.bus = bus
         self.buffer = buffer
         self._on_batch_ready = on_batch_ready
         self._save_path = save_path
+        self._trajectory_store = trajectory_store
 
     async def start(self) -> None:
         await self.bus.subscribe(
@@ -62,6 +64,8 @@ class NATSTrainingBridge:
         self.buffer.add(rollout)
         if self._save_path:
             self._append_jsonl(rollout)
+        if self._trajectory_store is not None:
+            self._trajectory_store.add_from_rollout(rollout)
         if self.buffer.has_batch():
             batch = self.buffer.get_batch()
             logger.info("Batch ready: %d rollouts", len(batch))

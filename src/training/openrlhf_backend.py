@@ -42,6 +42,9 @@ class OpenRLHFBackend:
         learning_rate: float = 1e-5,
         kl_coeff: float = 0.1,
         clip_range: float = 0.2,
+        use_dapo: bool = False,
+        clip_range_high: float = 0.28,
+        entropy_bonus: float = 0.0,
     ) -> None:
         self._model_name = model_name
         self._output_dir = Path(output_dir)
@@ -54,6 +57,9 @@ class OpenRLHFBackend:
         self._lr = learning_rate
         self._kl_coeff = kl_coeff
         self._clip_range = clip_range
+        self._use_dapo = use_dapo
+        self._clip_range_high = clip_range_high
+        self._entropy_bonus = entropy_bonus
         self._step_count = 0
         self._last_checkpoint: str | None = None
         self._ray_available: bool | None = None
@@ -143,6 +149,12 @@ class OpenRLHFBackend:
             cmd.extend(["--vllm_tensor_parallel_size", str(self._vllm_tp)])
         if self._ds_stage > 0:
             cmd.extend(["--deepspeed_stage", str(self._ds_stage)])
+
+        # DAPO support
+        if self._use_dapo:
+            cmd.extend(["--use_dapo", "--clip_range_high", str(self._clip_range_high)])
+            if self._entropy_bonus > 0:
+                cmd.extend(["--entropy_bonus", str(self._entropy_bonus)])
 
         logger.info("Launching OpenRLHF: %s", " ".join(cmd))
 

@@ -1,6 +1,6 @@
 # NEXT-TO-DO
 
-What to build next. Phase 9b completed alignment experiment infrastructure — 6 experiments, 40 scenarios, 79 tests, full audit trail. Now focusing on Phase 9c: trained models, advanced scorers, and benchmarks.
+What to build next. Phase 9c completed advanced scorers, contrastive training, and benchmarks. Now focusing on Priority 2 (signal richness) and Priority 3 (production readiness).
 
 > **Phase 8 completed** — CLI, OpenRLHF backend, OpenClaw-RL OPD mode, honest positioning.
 >
@@ -8,7 +8,7 @@ What to build next. Phase 9b completed alignment experiment infrastructure — 6
 >
 > **Phase 9b completed** — Alignment experiments, collusion detection, reward hacking detection, audit logger, Streamlit dashboard.
 >
-> **Phase 9c next** — Trained PRM, DAPO graduation, HaluGate, CISPO, benchmarks.
+> **Phase 9c completed** — Trajectory Store, HaluGate scorer, CISPO contrastive loss, DAPO graduation, Trained PRM model, Benchmark suite (GSM8K/MATH/HumanEval).
 
 ---
 
@@ -76,30 +76,14 @@ TRAINING LAYER (adopt existing — don't reinvent)
 
 ---
 
-## Phase 9c — Advanced Scorers + Benchmarks (Next)
+## Phase 9c — Advanced Scorers + Benchmarks ✅ Complete
 
-### 9c.1 Trained PRM Model
-- **What:** Replace LLM-as-judge with a trained process reward model (classifier head on frozen LLM)
-- **Why:** LLM-as-judge is slow (~1s per step), expensive, inconsistent. Trained PRM is 10-100x faster.
-- **Prerequisite:** Accumulate 10K+ scored trajectories via the Docker demo loop
-- **Implementation:** Fine-tune small model (Qwen2.5:0.5b) with scalar reward head. Implement `TrainedPRMScorer` as `StepScorer` protocol adapter. Plug into CombinedScorer.
-- **Research:** [Let's Verify Step by Step](https://arxiv.org/abs/2305.20050), [AgentPRM](https://arxiv.org/abs/2502.10325)
-
-### 9c.2 DAPO Graduation
-- **What:** Upgrade GRPO to full DAPO (Dynamic Advantage Policy Optimization)
-- **Phase 7 progress:** Asymmetric clipping (Clip-Higher) done in `asymmetric_clipped_surrogate_loss()`.
-- **Remaining:** Dynamic sampling (oversample, filter low-reward, keep diverse rollouts) + entropy bonus.
-- **Implementation:** With OpenRLHF backend, this becomes configuration — OpenRLHF supports DAPO natively.
-- **Research:** [DAPO (ByteDance)](https://arxiv.org/abs/2503.14476)
-
-### 9c.3 HaluGate Scorer
-- **What:** Hallucination detection as complementary `StepScorer`
-- **Why:** PRM scores reasoning quality but doesn't catch factual hallucinations.
-- **Implementation:** `HaluGateScorer` as `StepScorer` protocol adapter. Score = similarity between step claims and retrieved evidence. Combine with PRM via CombinedScorer.
-
-### 9c.4 CISPO Contrastive Loss
-- **What:** Contrastive loss between aligned vs misaligned trajectories.
-- **Why:** Phase 9b alignment experiments produce natural contrastive pairs (MisalignedWorker = negatives, EchoWorker/LLMWorker = positives).
+- **3.2 Trajectory Store** — SQLite-backed persistence (`src/training/trajectory_store.py`), integrated into NATSTrainingBridge
+- **9c.1 Trained PRM** — Frozen LLM + learned RewardHead (`src/rewards/trained_prm.py`), PRMTrainer (`src/rewards/prm_trainer.py`)
+- **9c.2 DAPO** — Dynamic sampling filter + entropy bonus + DAPOTrainer (`src/training/dapo.py`, `src/training/trainer.py`)
+- **9c.3 HaluGate** — Hallucination detection scorer (`src/rewards/halugate_scorer.py`), plugs into CombinedScorer
+- **9c.4 CISPO** — Contrastive trajectory loss + CISPOTrainer (`src/training/cispo.py`, `src/training/cispo_trainer.py`)
+- **9c.5 Benchmarks** — GSM8K/MATH/HumanEval suite (`src/benchmarks/`), CLI: `tentalis benchmark run|results`
 
 ### 9c.5 Benchmark Suite
 - **What:** Reproducible benchmarks on MATH, HumanEval, GSM8K.

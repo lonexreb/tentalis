@@ -64,18 +64,25 @@ src/
 │   ├── scorer.py            # StepScorer protocol + LLMJudgeScorer (LLM-as-judge PRM)
 │   ├── prompts.py           # STEP_JUDGE_PROMPT template for step-level evaluation
 │   ├── prm_evaluator.py     # PRMEvaluator — subscribes to results, scores steps, publishes rollouts
-│   └── combined_scorer.py   # CombinedScorer — multi-scorer composition with per-environment weights
+│   ├── combined_scorer.py   # CombinedScorer — multi-scorer composition with per-environment weights
+│   ├── halugate_scorer.py   # HaluGateScorer — hallucination detection via claim extraction + NLI
+│   ├── trained_prm.py       # RewardHead + TrainedPRM + TrainedPRMScorer (frozen LLM + learned head)
+│   └── prm_trainer.py       # PRMTrainer — trains RewardHead on TrajectoryStore data
 ├── training/
 │   ├── bridge.py              # RolloutBuffer + NATSTrainingBridge (batch rollouts for RL trainer)
-│   ├── grpo.py                # GRPO math: advantages, clipped_surrogate, asymmetric_clip, combined_loss, kl_penalty
-│   ├── trainer.py             # Trainer protocol, TrainStepResult, MockTrainer, GRPOTrainer (LoRA)
+│   ├── grpo.py                # GRPO math: advantages, clipped_surrogate, asymmetric_clip, combined_loss, kl_penalty, multi_loss
+│   ├── trainer.py             # Trainer protocol, TrainStepResult, MockTrainer, GRPOTrainer (LoRA), DAPOTrainer
 │   ├── combined_trainer.py    # CombinedTrainer — merged RL + OPD distillation loss
 │   ├── meta_trainer.py        # ManagerMetaTrainer — outer-loop RL for manager feedback quality
 │   ├── loop.py                # TrainingLoop orchestrator (bridge → trainer → ModelUpdateEvent, combined support)
 │   ├── scheduler.py           # TrainingScheduler — time-window gated training (buffers outside hours)
 │   ├── tinker_backend.py      # TinkerBackend — Trainer protocol adapter for Tinker cloud training
 │   ├── openrlhf_launcher.py   # OpenRLHFLauncher — subprocess launcher (legacy, kept for direct CLI usage)
-│   └── openrlhf_backend.py    # OpenRLHFBackend — Trainer protocol adapter for Ray+vLLM+DeepSpeed training
+│   ├── openrlhf_backend.py    # OpenRLHFBackend — Trainer protocol adapter for Ray+vLLM+DeepSpeed training
+│   ├── trajectory_store.py    # TrajectoryStore — SQLite-backed scored trajectory persistence
+│   ├── dapo.py                # DAPO utilities — dynamic_sample_filter, entropy_bonus, dapo_loss
+│   ├── cispo.py               # CISPO contrastive loss — margin-based + InfoNCE + pair building
+│   └── cispo_trainer.py       # CISPOTrainer — GRPO + contrastive trajectory loss
 ├── intercept/
 │   ├── __main__.py          # Entrypoint: python -m src.intercept
 │   ├── proxy.py             # InterceptProxy — session-stateful FastAPI proxy with skill injection
@@ -99,6 +106,11 @@ src/
 │   └── dashboard/
 │       ├── __init__.py
 │       └── app.py           # Streamlit dashboard for results + audit + constitution editor
+├── benchmarks/
+│   ├── __init__.py
+│   ├── datasets.py          # BenchmarkDataset — JSONL loader for GSM8K, MATH, HumanEval
+│   ├── evaluator.py         # BenchmarkEvaluator — answer extraction + correctness checking
+│   └── runner.py            # BenchmarkRunner — orchestrates evaluation + writes results
 ├── skills/
 │   ├── __init__.py
 │   ├── store.py             # SkillStore — SQLite-backed CRUD with embedding persistence
@@ -196,7 +208,7 @@ docs/
 - Requires NATS: `tests/events/test_bus.py`, `tests/test_integration.py`, `tests/bridge/test_service.py`
 - Requires optional deps: `tests/intercept/` (fastapi), `tests/bridge/test_http_api.py` (aiohttp)
 - Mock strategy: scorer/evaluator tests mock InferenceClient; bridge tests mock EventBus; OPD tests mock bus+client; integration tests use EchoWorker + mock scorer
-- Run standalone: `pytest tests/ -v --ignore=tests/bridge --ignore=tests/intercept` (241 pass, 22 skip without torch/NATS)
+- Run standalone: `pytest tests/ -v --ignore=tests/bridge --ignore=tests/intercept` (331 collected, ~295 pass, ~36 skip without torch/NATS)
 - Run standalone (skip slow torch tests): `pytest tests/training/ -v -k "not slow"`
 - Run all: `pytest tests/ -v` (with NATS running + optional deps)
 
@@ -235,6 +247,20 @@ docs/
 | ALIGNMENT_ENABLED | false | Enable alignment experiment infrastructure |
 | ALIGNMENT_RESULTS_DIR | alignment_results | Directory for experiment result JSON files |
 | ALIGNMENT_AUDIT_ALL | false | Enable full NATS event audit logging |
+| TRAJECTORY_STORE_ENABLED | false | Enable SQLite trajectory persistence |
+| TRAJECTORY_STORE_PATH | trajectory_data/trajectories.db | Path to trajectory SQLite database |
+| HALUGATE_ENABLED | false | Enable HaluGate hallucination scorer |
+| HALUGATE_MODEL | qwen2.5:1.5b | Model for HaluGate claim extraction/verification |
+| CISPO_ENABLED | false | Enable CISPO contrastive loss |
+| CISPO_WEIGHT | 0.2 | Weight for contrastive loss term |
+| CISPO_MARGIN | 0.5 | Margin for contrastive trajectory loss |
+| DAPO_ENTROPY_BETA | 0.01 | Entropy bonus coefficient for DAPO |
+| DAPO_MIN_REWARD_THRESHOLD | 0.1 | Min reward for DAPO dynamic sampling filter |
+| TRAINED_PRM_ENABLED | false | Enable trained PRM scorer |
+| TRAINED_PRM_MODEL | Qwen/Qwen2.5-0.5B | Base model for trained PRM |
+| TRAINED_PRM_CHECKPOINT | (empty) | Path to trained PRM reward head checkpoint |
+| BENCHMARK_DATASET_DIR | benchmark_data | Directory containing benchmark JSONL files |
+| BENCHMARK_RESULTS_DIR | benchmark_results | Directory for benchmark result JSON output |
 
 ## Commit Format
 
@@ -248,7 +274,7 @@ Conventional commits:
 
 ## Current Phase
 
-**Phase 8 in progress** — Adopt + Extend architecture reassessment.
+**Phase 9c complete** — Advanced scorers, contrastive training, benchmarks.
 
 Phase 8 additions:
 - CLI entry point (`src/cli.py`) — `tentalis init|train|serve|status` via Typer + Rich
@@ -290,7 +316,17 @@ Phase 9b (complete — Alignment experiments):
 - CLI `experiment` subcommand — `tentalis experiment run|results`
 - `AlignmentEvalEvent` + `AuditLogEvent` event types, `subscribe_raw` on EventBus
 
-**Phase 9c (next):** Trained PRM model, DAPO graduation, HaluGate scorer, CISPO contrastive loss, benchmarks.
+Phase 9c (complete — Advanced Scorers + Benchmarks):
+- Trajectory store (`src/training/trajectory_store.py`) — SQLite-backed scored trajectory persistence
+- HaluGate scorer (`src/rewards/halugate_scorer.py`) — hallucination detection via claim extraction + NLI verification
+- CISPO contrastive loss (`src/training/cispo.py`, `src/training/cispo_trainer.py`) — margin-based + InfoNCE contrastive loss
+- DAPO graduation (`src/training/dapo.py`) — dynamic sampling filter + entropy bonus + DAPOTrainer
+- Trained PRM (`src/rewards/trained_prm.py`, `src/rewards/prm_trainer.py`) — frozen LLM + learned RewardHead scorer
+- Benchmark suite (`src/benchmarks/`) — GSM8K, MATH, HumanEval with answer extraction + CLI
+- CLI `benchmark` subcommand — `tentalis benchmark run|results`
+- 14 new config vars for trajectory store, HaluGate, CISPO, DAPO, Trained PRM, benchmarks
+
+**Next:** Priority 2 (signal richness) — Token OPD advantages, implicit signal extraction, session-aware classification.
 
 ## Key Documents
 

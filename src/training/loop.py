@@ -33,6 +33,7 @@ class TrainingLoop:
         buffer: RolloutBuffer | None = None,
         save_path: Path | None = None,
         combined_trainer: object | None = None,
+        trajectory_store: object | None = None,
     ) -> None:
         self._bus = bus
         self._trainer = trainer
@@ -40,6 +41,7 @@ class TrainingLoop:
         self._save_path = save_path
         self._bridge: NATSTrainingBridge | None = None
         self._combined_trainer = combined_trainer
+        self._trajectory_store = trajectory_store
         self._combined_buffer: list[CombinedRolloutEvent] = []
         self._combined_batch_size = self._buffer.batch_size
 
@@ -49,6 +51,7 @@ class TrainingLoop:
             self._buffer,
             self._on_batch,
             save_path=self._save_path,
+            trajectory_store=self._trajectory_store,
         )
         await self._bridge.start()
 

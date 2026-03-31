@@ -54,6 +54,9 @@ tinker = [
 alignment = [
     "streamlit>=1.30",
 ]
+benchmarks = [
+    "sympy>=1.12",
+]
 
 [build-system]
 requires = ["setuptools>=68.0"]
